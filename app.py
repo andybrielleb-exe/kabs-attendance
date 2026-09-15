@@ -306,17 +306,15 @@ MAIN_TEMPLATE = """
                     <hr class="my-5 border-slate-200">
 
                     <!-- MANUAL CODE FALLBACK -->
-                    <form action="/scan-manual" method="POST" class="space-y-3">
-                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Manual Code Entry (Fallback)</label>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <input type="text" name="agenda" placeholder="Agenda (e.g. Relief Op)" class="text-xs py-2 px-3 border rounded-lg">
-                            <input type="text" name="task" placeholder="Task (e.g. Food Packing)" class="text-xs py-2 px-3 border rounded-lg">
-                        </div>
-                        <div class="flex space-x-2">
-                            <input type="text" name="qr_payload" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border rounded-lg">
-                            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Submit</button>
-                        </div>
-                    </form>
+                 <form action="/scan-manual" method="POST" class="space-y-3" onsubmit="document.getElementById('manual-agenda').value = document.getElementById('scan-agenda').value; document.getElementById('manual-task').value = document.getElementById('scan-task').value;">
+                     <input type="hidden" name="agenda" id="manual-agenda">
+                     <input type="hidden" name="task" id="manual-task">
+                     <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Manual Code Entry (Fallback)</label>
+                     <div class="flex space-x-2">
+                         <input type="text" name="qr_payload" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                         <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Submit</button>
+                     </div>
+                 </form>
                 </div>
 
                 <!-- VOLUNTEER PASS CARD -->
