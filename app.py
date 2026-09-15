@@ -204,7 +204,6 @@ MAIN_TEMPLATE = """
     {% endif %}
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- HEADER -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
@@ -224,7 +223,6 @@ MAIN_TEMPLATE = """
     </header>
 
     <main class="max-w-6xl mx-auto px-4 pt-6">
-        <!-- FLASH MESSAGES -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <div class="mb-6 space-y-2">
@@ -241,9 +239,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- GUEST VIEW: LOGIN & REGISTRATION -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <!-- LOGIN CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Volunteer Login</h2>
                     <p class="text-xs text-slate-500 mb-4">Naka-register ka na? Mag-login gamit ang iyong account.</p>
@@ -260,7 +256,6 @@ MAIN_TEMPLATE = """
                     </form>
                 </div>
 
-                <!-- REGISTER CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Register New Volunteer</h2>
                     <p class="text-xs text-slate-500 mb-4">Para sa mga bago at wala pang authenticated pass.</p>
@@ -282,13 +277,10 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED-IN VIEW: SCANNER, PASS & RECORDS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <!-- ATTENDANCE SCANNER CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold mb-3 flex items-center gap-2">📷 Attendance Scanner</h2>
 
-                    <!-- AGENDA AT TASK INPUT BOXES -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
@@ -305,19 +297,17 @@ MAIN_TEMPLATE = """
 
                     <hr class="my-5 border-slate-200">
 
-                    <!-- MANUAL CODE FALLBACK -->
-                 <form action="/scan-manual" method="POST" class="space-y-3" onsubmit="document.getElementById('manual-agenda').value = document.getElementById('scan-agenda').value; document.getElementById('manual-task').value = document.getElementById('scan-task').value;">
-                     <input type="hidden" name="agenda" id="manual-agenda">
-                     <input type="hidden" name="task" id="manual-task">
-                     <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Manual Code Entry (Fallback)</label>
-                     <div class="flex space-x-2">
-                         <input type="text" name="qr_payload" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
-                         <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Submit</button>
-                     </div>
-                 </form>
+                    <form action="/scan-manual" method="POST" class="space-y-3" onsubmit="document.getElementById('manual-agenda').value = document.getElementById('scan-agenda').value; document.getElementById('manual-task').value = document.getElementById('scan-task').value;">
+                        <input type="hidden" name="agenda" id="manual-agenda">
+                        <input type="hidden" name="task" id="manual-task">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Manual Code Entry (Fallback)</label>
+                        <div class="flex space-x-2">
+                            <input type="text" name="qr_payload" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Submit</button>
+                        </div>
+                    </form>
                 </div>
 
-                <!-- VOLUNTEER PASS CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">Official Volunteer</span>
                     <h3 class="text-lg font-bold">{{ user.name }}</h3>
@@ -328,7 +318,6 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE RECORDS TABLE WITH AGENDA & TASK -->
             <div class="mt-8 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b font-bold text-sm text-slate-800">All-Time Attendance Log</div>
                 <div class="overflow-x-auto">
@@ -340,30 +329,31 @@ MAIN_TEMPLATE = """
                                 <th class="py-3 px-4">Task</th>
                                 <th class="py-3 px-4">Time In</th>
                                 <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-    {% for log in logs %}
-    <tr>
-        <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
-        <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-        <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-        <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-        <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-            {{ log[4] if log[4] else 'Clocked In' }}
-        </td>
-        <td class="py-3 px-4 text-center">
-            <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                    Delete
-                </button>
-            </form>
-        </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-    {% endfor %}
-</tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
+                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                    {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                        <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            {% endfor %}
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -416,12 +406,13 @@ def index():
     if user:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-    SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
-    FROM attendance
-    JOIN volunteers ON attendance.volunteer_id = volunteers.id
-    ORDER BY attendance.id DESC
-""")
+        cursor.execute(
+            """
+            SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
+            FROM attendance
+            JOIN volunteers ON attendance.volunteer_id = volunteers.id
+            ORDER BY attendance.id DESC
+        """
         )
         logs = cursor.fetchall()
         cursor.close()
@@ -564,6 +555,16 @@ def scan_api():
     task = data.get("task", "")
     success, message = process_qr_data(payload, agenda=agenda, task=task)
     return jsonify({"success": success, "message": message})
+
+
+@app.route("/scan-manual", methods=["POST"])
+def scan_manual():
+    payload = request.form.get("qr_payload", "").strip()
+    agenda = request.form.get("agenda", "").strip()
+    task = request.form.get("task", "").strip()
+    success, message = process_qr_data(payload, agenda=agenda, task=task)
+    flash(message, "success" if success else "danger")
+    return redirect(url_for("index"))
 
 
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
