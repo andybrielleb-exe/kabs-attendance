@@ -409,13 +409,12 @@ def index():
     if user:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out
-            FROM attendance
-            JOIN volunteers ON attendance.volunteer_id = volunteers.id
-            ORDER BY attendance.id DESC
-        """
+        cursor.execute("""
+    SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
+    FROM attendance
+    JOIN volunteers ON attendance.volunteer_id = volunteers.id
+    ORDER BY attendance.id DESC
+""")
         )
         logs = cursor.fetchall()
         cursor.close()
