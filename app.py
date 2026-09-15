@@ -16,14 +16,18 @@ from flask import (
 import qrcode
 
 app = Flask(__name__)
-app.secret_key = "kabs_attendance_secret_key"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key")
+
+# Kapag may persistent disk sa Render (/var/data), doon ise-save para hindi mabura
+DATA_DIR = "/var/data" if os.path.exists("/var/data") else "."
+DB_PATH = os.path.join(DATA_DIR, "kabs.db")
 
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
 
 def init_db():
-    conn = sqlite3.connect("kabs.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -50,13 +54,11 @@ def init_db():
     """
     )
 
-    # Auto-migration kung may lumang database table na walang volunteer_code column
     cursor.execute("PRAGMA table_info(volunteers)")
     columns = [col[1] for col in cursor.fetchall()]
     if "volunteer_code" not in columns:
         cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_code TEXT")
 
-    # Lagyan ng unique codes ang mga lumang registered volunteers kung sakali
     cursor.execute("SELECT id FROM volunteers WHERE volunteer_code IS NULL")
     missing_codes = cursor.fetchall()
     for row in missing_codes:
@@ -95,48 +97,13 @@ MAIN_TEMPLATE = """
             flex-wrap: wrap;
             gap: 10px;
         }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .brand-logo {
-            width: 48px;
-            height: 48px;
-            border-radius: 8px;
-            object-fit: cover;
-            background: #ffffff;
-            padding: 2px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .brand h1 {
-            font-size: 1.15rem;
-            line-height: 1.2;
-            font-weight: 700;
-            margin: 0;
-        }
-        .sub-title {
-            font-size: 0.75rem;
-            color: #94a3b8;
-        }
-        .nav-btn {
-            background: rgba(255, 255, 255, 0.1);
-            color: #f8fafc;
-            padding: 8px 14px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 600;
-            transition: 0.2s;
-        }
-        .nav-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-        }
-        .user-greeting {
-            margin-right: 10px;
-            font-size: 0.85rem;
-            color: #cbd5e1;
-        }
+        .brand { display: flex; align-items: center; gap: 12px; }
+        .brand-logo { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #ffffff; padding: 2px; }
+        .brand h1 { font-size: 1.15rem; line-height: 1.2; font-weight: 700; margin: 0; }
+        .sub-title { font-size: 0.75rem; color: #94a3b8; }
+        .nav-btn { background: rgba(255, 255, 255, 0.1); color: #f8fafc; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+        .nav-btn:hover { background: rgba(255, 255, 255, 0.25); }
+        .user-greeting { margin-right: 10px; font-size: 0.85rem; color: #cbd5e1; }
         
         .grid-layout { display: flex; flex-direction: column; gap: 20px; }
         @media (min-width: 850px) {
@@ -157,6 +124,7 @@ MAIN_TEMPLATE = """
         .alert { padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; font-weight: 500; }
         .success { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
         .danger { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+        .warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
 
         #reader { width: 100% !important; border-radius: 8px; overflow: hidden; border: none !important; }
         #reader video { border-radius: 8px; }
@@ -171,16 +139,7 @@ MAIN_TEMPLATE = """
         .tag-pending { color: #d97706; font-style: italic; }
 
         .pass-code-pill {
-            display: inline-block;
-            background: #e2e8f0;
-            color: #0f172a;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 1rem;
-            font-weight: 700;
-            letter-spacing: 1px;
-            margin-top: 8px;
-            border: 1px dashed #64748b;
+            display: inline-block; background: #e2e8f0; color: #0f172a; padding: 5px 12px; border-radius: 20px; font-size: 1rem; font-weight: 700; letter-spacing: 1px; margin-top: 8px; border: 1px dashed #64748b;
         }
     </style>
 </head>
@@ -188,7 +147,7 @@ MAIN_TEMPLATE = """
 
     <div class="header">
         <div class="brand">
-            <img src="/static/images/logo.jpg" alt="KABS Logo" class="brand-logo">
+            <img src="/static/images/logo.jpg" alt="KABS Logo" class="brand-logo" onerror="this.style.display='none'">
             <div>
                 <h1>KABATAAN PARA SA AKSYON, BAYANIHAN, AT SERBISYO - KABS</h1>
                 <span class="sub-title">Volunteer Attendance System</span>
@@ -213,7 +172,6 @@ MAIN_TEMPLATE = """
     {% endwith %}
 
     <div class="grid-layout">
-        <!-- SCANNER SECTION -->
         <div class="card">
             <h2>📷 Attendance Scanner</h2>
             <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 15px;">Scan QR badge directly via camera (TIME IN / OUT)</p>
@@ -228,7 +186,6 @@ MAIN_TEMPLATE = """
             </form>
         </div>
 
-        <!-- PROFILE / REGISTER / LOGIN -->
         <div class="card">
             {% if user %}
                 <div style="text-align: center;">
@@ -248,11 +205,12 @@ MAIN_TEMPLATE = """
             {% else %}
                 <div id="login-box">
                     <h2>Volunteer Login</h2>
+                    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 12px;">Registered na? Mag-login gamit ang iyong Gmail at Contact Number.</p>
                     <form action="/login" method="POST">
                         <label>Email Address (@gmail.com only)</label>
-                        <input type="email" name="email" pattern="^[a-zA-Z0-9._%+-]+@gmail\\.com$" title="Email must end with @gmail.com" required placeholder="juandelacruz@gmail.com">
+                        <input type="email" name="email" required placeholder="juandelacruz@gmail.com">
                         <label>Contact Number (11 digits)</label>
-                        <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" title="Must be exactly 11 numeric digits">
+                        <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" required placeholder="09xxxxxxxxx">
                         <button type="submit">Access Profile & QR</button>
                     </form>
                 </div>
@@ -261,13 +219,14 @@ MAIN_TEMPLATE = """
 
                 <div>
                     <h2>Register New Volunteer</h2>
+                    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 12px;">Para lamang sa mga bago at wala pang account.</p>
                     <form action="/register" method="POST">
                         <label>Full Name (Max 50 chars)</label>
                         <input type="text" name="name" maxlength="50" required placeholder="Juan Dela Cruz">
                         <label>Email Address (@gmail.com only)</label>
-                        <input type="email" name="email" pattern="^[a-zA-Z0-9._%+-]+@gmail\\.com$" title="Email must end with @gmail.com" required placeholder="juandelacruz@gmail.com">
+                        <input type="email" name="email" required placeholder="juandelacruz@gmail.com">
                         <label>Contact Number (11 digits)</label>
-                        <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" title="Must be exactly 11 numeric digits">
+                        <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" required placeholder="09xxxxxxxxx">
                         <button type="submit" style="background-color: #0f172a;">Register & Generate Pass</button>
                     </form>
                 </div>
@@ -275,9 +234,8 @@ MAIN_TEMPLATE = """
         </div>
     </div>
 
-    <!-- LOGS SECTION -->
     <div class="card" style="margin-top: 20px;">
-        <h2>Recent Attendance Records</h2>
+        <h2>All-Time Attendance Records</h2>
         <div class="table-responsive">
             <table>
                 <thead>
@@ -338,18 +296,13 @@ MAIN_TEMPLATE = """
 
 
 def process_qr_data(qr_data_str):
-    """
-    Tumatanggap ng JSON payload mula sa Camera QR scanner
-    o Unique Volunteer Code (hal. KABS-4F2A) mula sa Manual Input.
-    """
     qr_data_str = qr_data_str.strip()
     v_id = None
     name = None
 
-    conn = sqlite3.connect("kabs.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1. Subukan basahin kung JSON payload (QR Scan)
     try:
         data = json.loads(qr_data_str)
         if data.get("system") == "KABS_SECURE_AUTH":
@@ -365,7 +318,6 @@ def process_qr_data(qr_data_str):
     except Exception:
         pass
 
-    # 2. Kung hindi JSON o nabigo ang QR verification, subukan hanapin bilang Unique Volunteer Code (Manual Fallback)
     if not v_id:
         cursor.execute(
             "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
@@ -375,12 +327,10 @@ def process_qr_data(qr_data_str):
         if volunteer:
             v_id, name = volunteer
 
-    # 3. Kung parehong walang nahanap
     if not v_id:
         conn.close()
-        return False, f"❌ Invalid code or payload: '{qr_data_str}' not recognized."
+        return False, f"❌ Invalid code: '{qr_data_str}' not recognized."
 
-    # 4. Mag-record ng Attendance (Time In / Time Out logic)
     now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
 
     cursor.execute(
@@ -410,14 +360,14 @@ def process_qr_data(qr_data_str):
 @app.route("/")
 def index():
     user = session.get("user")
-    conn = sqlite3.connect("kabs.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         """
         SELECT volunteers.name, attendance.time_in, attendance.time_out
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
-        ORDER BY attendance.id DESC LIMIT 10
+        ORDER BY attendance.id DESC
     """
     )
     logs = cursor.fetchall()
@@ -428,8 +378,12 @@ def index():
 @app.route("/register", methods=["POST"])
 def register():
     name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip()
+    email = request.form.get("email", "").strip().lower()
     contact = request.form.get("contact", "").strip()
+
+    if not email.endswith("@gmail.com") or len(email) <= 10:
+        flash("❌ Valid @gmail.com address lamang ang tinatanggap!", "danger")
+        return redirect(url_for("index"))
 
     if len(name) > 50 or len(name) < 2:
         flash("❌ Name must be between 2 and 50 characters long.", "danger")
@@ -439,62 +393,68 @@ def register():
         flash("❌ Contact number must be exactly 11 digits.", "danger")
         return redirect(url_for("index"))
 
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # 1. Haharangin kapag nakarehistro na ang email
+    cursor.execute("SELECT id, name FROM volunteers WHERE email = ?", (email,))
+    existing_user = cursor.fetchone()
+    if existing_user:
+        conn.close()
+        flash(f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang sa itaas gamit ang iyong Contact Number.", "warning")
+        return redirect(url_for("index") + "#login-box")
+
     auth_token = secrets.token_hex(16)
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
 
-    try:
-        conn = sqlite3.connect("kabs.db")
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (?, ?, ?, ?, ?)",
-            (name, email, contact, auth_token, unique_volunteer_code),
-        )
-        v_id = cursor.lastrowid
+    cursor.execute(
+        "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (?, ?, ?, ?, ?)",
+        (name, email, contact, auth_token, unique_volunteer_code),
+    )
+    v_id = cursor.lastrowid
 
-        qr_payload = {
-            "system": "KABS_SECURE_AUTH",
-            "id": v_id,
-            "name": name,
-            "token": auth_token,
-            "code": unique_volunteer_code,
-        }
+    qr_payload = {
+        "system": "KABS_SECURE_AUTH",
+        "id": v_id,
+        "name": name,
+        "token": auth_token,
+        "code": unique_volunteer_code,
+    }
 
-        qr_filename = f"volunteer_{v_id}.png"
-        qr_path = os.path.join(QR_FOLDER, qr_filename)
+    qr_filename = f"volunteer_{v_id}.png"
+    qr_path = os.path.join(QR_FOLDER, qr_filename)
 
-        img = qrcode.make(json.dumps(qr_payload))
-        img.save(qr_path)
+    img = qrcode.make(json.dumps(qr_payload))
+    img.save(qr_path)
 
-        cursor.execute(
-            "UPDATE volunteers SET qr_code = ? WHERE id = ?",
-            (qr_filename, v_id),
-        )
-        conn.commit()
-        conn.close()
+    cursor.execute(
+        "UPDATE volunteers SET qr_code = ? WHERE id = ?",
+        (qr_filename, v_id),
+    )
+    conn.commit()
+    conn.close()
 
-        session["user"] = {
-            "id": v_id,
-            "name": name,
-            "email": email,
-            "volunteer_code": unique_volunteer_code,
-            "qr_code": qr_filename,
-        }
-        flash(f"✅ Registration complete! Your pass code is {unique_volunteer_code}", "success")
-    except sqlite3.IntegrityError:
-        flash(
-            "❌ This email is already registered. Please login instead.",
-            "danger",
-        )
-
+    session["user"] = {
+        "id": v_id,
+        "name": name,
+        "email": email,
+        "volunteer_code": unique_volunteer_code,
+        "qr_code": qr_filename,
+    }
+    flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
 
 
 @app.route("/login", methods=["POST"])
 def login():
-    email = request.form.get("email", "").strip()
+    email = request.form.get("email", "").strip().lower()
     contact = request.form.get("contact", "").strip()
 
-    conn = sqlite3.connect("kabs.db")
+    if not email.endswith("@gmail.com"):
+        flash("❌ Email must end with @gmail.com", "danger")
+        return redirect(url_for("index"))
+
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
@@ -513,7 +473,7 @@ def login():
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
-        flash("❌ No profile matches those credentials.", "danger")
+        flash("❌ Walang profile na tumugma sa email o contact number na nilagay.", "danger")
 
     return redirect(url_for("index"))
 
@@ -521,7 +481,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.pop("user", None)
-    flash("Session ended.", "success")
+    flash("Naka-log out ka na.", "success")
     return redirect(url_for("index"))
 
 
@@ -541,4 +501,4 @@ def scan_manual():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80, debug=True)
+    app.run(host="0.0.0.0", port=80, debug=False)
