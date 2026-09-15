@@ -343,20 +343,27 @@ MAIN_TEMPLATE = """
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            {% for log in logs %}
-                            <tr>
-                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
-                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                    {{ log[4] if log[4] else 'Clocked In' }}
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="5" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-                            {% endfor %}
-                        </tbody>
+    {% for log in logs %}
+    <tr>
+        <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
+        <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+        <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+        <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+        <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+            {{ log[4] if log[4] else 'Clocked In' }}
+        </td>
+        <td class="py-3 px-4 text-center">
+            <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                    Delete
+                </button>
+            </form>
+        </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+    {% endfor %}
+</tbody>
                     </table>
                 </div>
             </div>
@@ -559,13 +566,25 @@ def scan_api():
     return jsonify({"success": success, "message": message})
 
 
-@app.route("/scan-manual", methods=["POST"])
-def scan_manual():
-    payload = request.form.get("qr_payload", "").strip()
-    agenda = request.form.get("agenda", "").strip()
-    task = request.form.get("task", "").strip()
-    success, message = process_qr_data(payload, agenda=agenda, task=task)
-    flash(message, "success" if success else "danger")
+@app.route("/delete-log/<int:log_id>", methods=["POST"])
+def delete_log(log_id):
+    if not session.get("user"):
+        flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM attendance WHERE id = %s"
+        if DATABASE_URL
+        else "DELETE FROM attendance WHERE id = ?",
+        (log_id,),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash("🗑️ Matagumpay na nabura ang attendance log!", "success")
     return redirect(url_for("index"))
 
 
