@@ -15,62 +15,84 @@ from flask import (
 )
 import qrcode
 
+try:
+    import psycopg2
+    from psycopg2.extras import DictCursor
+except ImportError:
+    psycopg2 = None
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key")
 
-# Kapag may persistent disk sa Render (/var/data), doon ise-save para hindi mabura
-DATA_DIR = "/var/data" if os.path.exists("/var/data") else "."
-DB_PATH = os.path.join(DATA_DIR, "kabs.db")
-
+DATABASE_URL = os.environ.get("DATABASE_URL")
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
 
+def get_db_connection():
+    if DATABASE_URL and psycopg2:
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect("kabs.db")
+
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
+    if DATABASE_URL and psycopg2:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS volunteers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                contact TEXT NOT NULL,
+                auth_token TEXT NOT NULL,
+                volunteer_code TEXT UNIQUE,
+                qr_code TEXT
+            );
         """
-        CREATE TABLE IF NOT EXISTS volunteers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name VARCHAR(50) NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            contact TEXT NOT NULL,
-            auth_token TEXT NOT NULL,
-            volunteer_code TEXT UNIQUE,
-            qr_code TEXT
         )
-    """
-    )
-    cursor.execute(
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS attendance (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER REFERENCES volunteers(id),
+                time_in TEXT,
+                time_out TEXT
+            );
         """
-        CREATE TABLE IF NOT EXISTS attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            volunteer_id INTEGER,
-            time_in TEXT,
-            time_out TEXT,
-            FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
         )
-    """
-    )
-
-    cursor.execute("PRAGMA table_info(volunteers)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if "volunteer_code" not in columns:
-        cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_code TEXT")
-
-    cursor.execute("SELECT id FROM volunteers WHERE volunteer_code IS NULL")
-    missing_codes = cursor.fetchall()
-    for row in missing_codes:
-        new_code = f"KABS-{secrets.token_hex(2).upper()}"
-        cursor.execute("UPDATE volunteers SET volunteer_code = ? WHERE id = ?", (new_code, row[0]))
-
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS volunteers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(50) NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                contact TEXT NOT NULL,
+                auth_token TEXT NOT NULL,
+                volunteer_code TEXT UNIQUE,
+                qr_code TEXT
+            )
+        """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS attendance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                volunteer_id INTEGER,
+                time_in TEXT,
+                time_out TEXT,
+                FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
+            )
+        """
+        )
     conn.commit()
+    cursor.close()
     conn.close()
 
 
 init_db()
-
 
 MAIN_TEMPLATE = """
 <!DOCTYPE html>
@@ -83,68 +105,37 @@ MAIN_TEMPLATE = """
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #1e293b; padding: 15px; }
-        
-        .header {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: white;
-            padding: 14px 20px;
-            border-radius: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
+        .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 14px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .brand { display: flex; align-items: center; gap: 12px; }
         .brand-logo { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #ffffff; padding: 2px; }
         .brand h1 { font-size: 1.15rem; line-height: 1.2; font-weight: 700; margin: 0; }
         .sub-title { font-size: 0.75rem; color: #94a3b8; }
         .nav-btn { background: rgba(255, 255, 255, 0.1); color: #f8fafc; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
-        .nav-btn:hover { background: rgba(255, 255, 255, 0.25); }
         .user-greeting { margin-right: 10px; font-size: 0.85rem; color: #cbd5e1; }
-        
         .grid-layout { display: flex; flex-direction: column; gap: 20px; }
-        @media (min-width: 850px) {
-            .grid-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
-            body { max-width: 1200px; margin: 0 auto; padding: 25px; }
-        }
-
+        @media (min-width: 850px) { .grid-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: start; } body { max-width: 1200px; margin: 0 auto; padding: 25px; } }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
         .card h2 { font-size: 1.15rem; margin-bottom: 15px; color: #0f172a; }
-
         label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: #475569; }
         input[type=text], input[type=email], input[type=tel] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; margin-bottom: 15px; outline: none; }
-        input:focus { border-color: #2563eb; }
-
         button, .btn { display: inline-block; width: 100%; text-align: center; background-color: #2563eb; color: white; padding: 12px; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; text-decoration: none; }
         button:hover, .btn:hover { background-color: #1d4ed8; }
-
         .alert { padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; font-weight: 500; }
         .success { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
         .danger { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
         .warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
-
         #reader { width: 100% !important; border-radius: 8px; overflow: hidden; border: none !important; }
-        #reader video { border-radius: 8px; }
-
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 10px; }
         table { width: 100%; border-collapse: collapse; min-width: 480px; font-size: 0.85rem; }
         th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
         th { background: #f8fafc; font-weight: 600; color: #64748b; }
-        
         .tag-in { color: #16a34a; font-weight: 600; }
         .tag-out { color: #dc2626; font-weight: 600; }
         .tag-pending { color: #d97706; font-style: italic; }
-
-        .pass-code-pill {
-            display: inline-block; background: #e2e8f0; color: #0f172a; padding: 5px 12px; border-radius: 20px; font-size: 1rem; font-weight: 700; letter-spacing: 1px; margin-top: 8px; border: 1px dashed #64748b;
-        }
+        .pass-code-pill { display: inline-block; background: #e2e8f0; color: #0f172a; padding: 5px 12px; border-radius: 20px; font-size: 1rem; font-weight: 700; letter-spacing: 1px; margin-top: 8px; border: 1px dashed #64748b; }
     </style>
 </head>
 <body>
-
     <div class="header">
         <div class="brand">
             <img src="/static/images/logo.jpg" alt="KABS Logo" class="brand-logo" onerror="this.style.display='none'">
@@ -177,7 +168,6 @@ MAIN_TEMPLATE = """
             <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 15px;">Scan QR badge directly via camera (TIME IN / OUT)</p>
             <div id="reader"></div>
             <div id="scan-status" style="margin-top: 12px; font-size: 0.9rem; font-weight: 600;"></div>
-
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0;">
             <form action="/scan-manual" method="POST">
                 <label>Manual Input / Fallback</label>
@@ -192,14 +182,11 @@ MAIN_TEMPLATE = """
                     <h2>Verified Volunteer Pass</h2>
                     <p style="font-size: 1.1rem; font-weight: bold; margin-bottom: 4px;">{{ user.name }}</p>
                     <p style="color: #16a34a; font-weight: 600; font-size: 0.85rem; margin-bottom: 12px;">AUTHENTICATED PASS</p>
-                    
                     <img src="/static/qrcodes/{{ user.qr_code }}" style="max-width: 180px; width: 100%; border: 2px solid #0f172a; border-radius: 8px;"><br>
-                    
                     <div style="margin-bottom: 15px;">
                         <span style="font-size: 0.75rem; color: #64748b; display: block; margin-top: 8px;">Fallback Manual Code:</span>
                         <span class="pass-code-pill">{{ user.volunteer_code }}</span>
                     </div>
-
                     <a href="/static/qrcodes/{{ user.qr_code }}" download class="btn">Save / Download QR</a>
                 </div>
             {% else %}
@@ -214,9 +201,7 @@ MAIN_TEMPLATE = """
                         <button type="submit">Access Profile & QR</button>
                     </form>
                 </div>
-
                 <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0;">
-
                 <div>
                     <h2>Register New Volunteer</h2>
                     <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 12px;">Para lamang sa mga bago at wala pang account.</p>
@@ -266,7 +251,6 @@ MAIN_TEMPLATE = """
         function onScanSuccess(decodedText) {
             html5QrcodeScanner.clear();
             document.getElementById('scan-status').innerHTML = "⏳ Processing record...";
-            
             fetch('/scan-api', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -282,12 +266,7 @@ MAIN_TEMPLATE = """
                 location.reload();
             });
         }
-
-        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
-            fps: 10, 
-            qrbox: { width: 220, height: 220 },
-            aspectRatio: 1.0
-        });
+        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 });
         html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
@@ -300,7 +279,7 @@ def process_qr_data(qr_data_str):
     v_id = None
     name = None
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
@@ -309,50 +288,62 @@ def process_qr_data(qr_data_str):
             v_id = data.get("id")
             token = data.get("token")
             cursor.execute(
-                "SELECT id, name FROM volunteers WHERE id = ? AND auth_token = ?",
+                "SELECT id, name FROM volunteers WHERE id = %s AND auth_token = %s"
+                if DATABASE_URL
+                else "SELECT id, name FROM volunteers WHERE id = ? AND auth_token = ?",
                 (v_id, token),
             )
             volunteer = cursor.fetchone()
             if volunteer:
-                v_id, name = volunteer
+                v_id, name = volunteer[0], volunteer[1]
     except Exception:
         pass
 
     if not v_id:
         cursor.execute(
-            "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+            "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+            if DATABASE_URL
+            else "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
             (qr_data_str,),
         )
         volunteer = cursor.fetchone()
         if volunteer:
-            v_id, name = volunteer
+            v_id, name = volunteer[0], volunteer[1]
 
     if not v_id:
+        cursor.close()
         conn.close()
         return False, f"❌ Invalid code: '{qr_data_str}' not recognized."
 
     now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
 
     cursor.execute(
-        "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
+        if DATABASE_URL
+        else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
         (v_id,),
     )
     active_record = cursor.fetchone()
 
     if active_record:
         cursor.execute(
-            "UPDATE attendance SET time_out = ? WHERE id = ?",
+            "UPDATE attendance SET time_out = %s WHERE id = %s"
+            if DATABASE_URL
+            else "UPDATE attendance SET time_out = ? WHERE id = ?",
             (now, active_record[0]),
         )
         msg = f"🔴 TIME OUT recorded for {name} ({now})"
     else:
         cursor.execute(
-            "INSERT INTO attendance (volunteer_id, time_in) VALUES (?, ?)",
+            "INSERT INTO attendance (volunteer_id, time_in) VALUES (%s, %s)"
+            if DATABASE_URL
+            else "INSERT INTO attendance (volunteer_id, time_in) VALUES (?, ?)",
             (v_id, now),
         )
         msg = f"🟢 TIME IN recorded for {name} ({now})"
 
     conn.commit()
+    cursor.close()
     conn.close()
     return True, msg
 
@@ -360,7 +351,7 @@ def process_qr_data(qr_data_str):
 @app.route("/")
 def index():
     user = session.get("user")
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -371,6 +362,7 @@ def index():
     """
     )
     logs = cursor.fetchall()
+    cursor.close()
     conn.close()
     return render_template_string(MAIN_TEMPLATE, user=user, logs=logs)
 
@@ -393,13 +385,16 @@ def register():
         flash("❌ Contact number must be exactly 11 digits.", "danger")
         return redirect(url_for("index"))
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 1. Haharangin kapag nakarehistro na ang email
-    cursor.execute("SELECT id, name FROM volunteers WHERE email = ?", (email,))
+    cursor.execute(
+        "SELECT id, name FROM volunteers WHERE email = %s" if DATABASE_URL else "SELECT id, name FROM volunteers WHERE email = ?",
+        (email,),
+    )
     existing_user = cursor.fetchone()
     if existing_user:
+        cursor.close()
         conn.close()
         flash(f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang sa itaas gamit ang iyong Contact Number.", "warning")
         return redirect(url_for("index") + "#login-box")
@@ -407,11 +402,18 @@ def register():
     auth_token = secrets.token_hex(16)
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
 
-    cursor.execute(
-        "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (?, ?, ?, ?, ?)",
-        (name, email, contact, auth_token, unique_volunteer_code),
-    )
-    v_id = cursor.lastrowid
+    if DATABASE_URL:
+        cursor.execute(
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (name, email, contact, auth_token, unique_volunteer_code),
+        )
+        v_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (?, ?, ?, ?, ?)",
+            (name, email, contact, auth_token, unique_volunteer_code),
+        )
+        v_id = cursor.lastrowid
 
     qr_payload = {
         "system": "KABS_SECURE_AUTH",
@@ -423,15 +425,15 @@ def register():
 
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
-
     img = qrcode.make(json.dumps(qr_payload))
     img.save(qr_path)
 
     cursor.execute(
-        "UPDATE volunteers SET qr_code = ? WHERE id = ?",
+        "UPDATE volunteers SET qr_code = %s WHERE id = %s" if DATABASE_URL else "UPDATE volunteers SET qr_code = ? WHERE id = ?",
         (qr_filename, v_id),
     )
     conn.commit()
+    cursor.close()
     conn.close()
 
     session["user"] = {
@@ -454,13 +456,16 @@ def login():
         flash("❌ Email must end with @gmail.com", "danger")
         return redirect(url_for("index"))
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
+        "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
+        if DATABASE_URL
+        else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
         (email, contact),
     )
     user = cursor.fetchone()
+    cursor.close()
     conn.close()
 
     if user:
