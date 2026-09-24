@@ -27,7 +27,13 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_secret_key_2026_prod")
+
+# Siguraduhin ang maayos na cross-device session cookies sa Render HTTPS
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -143,51 +149,27 @@ def authenticate_user_by_qr(raw_qr_input):
         return None
 
     cleaned_str = str(raw_qr_input).strip()
-    # Linisin ang posibleng quotes sa simula o dulo
-    if (cleaned_str.startswith('"') and cleaned_str.endswith('"')) or (
-        cleaned_str.startswith("'") and cleaned_str.endswith("'")
-    ):
-        cleaned_str = cleaned_str[1:-1].strip()
-
     conn = get_db_connection()
     cursor = conn.cursor()
     user = None
 
-    # Step 1: Subukang kunin gamit ang JSON format
-    try:
-        # Pagsasaayos kung may single quotes sa halip na double quotes
-        fixed_json_str = cleaned_str.replace("'", '"')
-        data = json.loads(fixed_json_str)
-        if isinstance(data, dict):
-            v_id = data.get("id")
-            token = data.get("token")
-            v_code = data.get("code")
+    # 1. Kung URL ang laman ng QR (hal. https://domain.com/qr-auth/TOKEN o ?code=KABS-XXXX)
+    token_url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", cleaned_str)
+    if token_url_match:
+        token = token_url_match.group(1).strip()
+        cursor.execute(
+            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
+            if DATABASE_URL
+            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = ?",
+            (token,),
+        )
+        user = cursor.fetchone()
 
-            if v_id and token:
-                cursor.execute(
-                    "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
-                    if DATABASE_URL
-                    else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
-                    (v_id, token),
-                )
-                user = cursor.fetchone()
-
-            if not user and v_code:
-                cursor.execute(
-                    "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
-                    if DATABASE_URL
-                    else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-                    (str(v_code).strip(),),
-                )
-                user = cursor.fetchone()
-    except Exception:
-        pass
-
-    # Step 2: Regex extraction para sa Volunteer Code pattern (hal. KABS-4F2A o KABS-7F2D)
+    # 2. Kung Volunteer Code ang nahanap sa text o URL (hal. KABS-4F2A o KABS-7F2D)
     if not user:
         code_match = re.search(r"KABS-[A-Za-z0-9]+", cleaned_str, re.IGNORECASE)
         if code_match:
-            found_code = code_match.group(0).upper()
+            found_code = code_match.group(0).upper().strip()
             cursor.execute(
                 "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
                 if DATABASE_URL
@@ -196,17 +178,37 @@ def authenticate_user_by_qr(raw_qr_input):
             )
             user = cursor.fetchone()
 
-    # Step 3: Direct match sa Volunteer Code
+    # 3. Kung JSON string ang QR data
     if not user:
-        cursor.execute(
-            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
-            if DATABASE_URL
-            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-            (cleaned_str.upper(),),
-        )
-        user = cursor.fetchone()
+        try:
+            fixed_json = cleaned_str.replace("'", '"')
+            data = json.loads(fixed_json)
+            if isinstance(data, dict):
+                v_id = data.get("id")
+                token = data.get("token")
+                v_code = data.get("code")
 
-    # Step 4: Direct match sa Auth Token
+                if v_id and token:
+                    cursor.execute(
+                        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
+                        if DATABASE_URL
+                        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
+                        (v_id, token),
+                    )
+                    user = cursor.fetchone()
+
+                if not user and v_code:
+                    cursor.execute(
+                        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+                        if DATABASE_URL
+                        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+                        (str(v_code).upper().strip(),),
+                    )
+                    user = cursor.fetchone()
+        except Exception:
+            pass
+
+    # 4. Direct match sa Token
     if not user:
         cursor.execute(
             "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
@@ -313,7 +315,7 @@ MAIN_TEMPLATE = """
                             Use Credentials Instead
                         </button>
                     </div>
-                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para mag-login.</p>
+                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para mag-auto login.</p>
 
                     <div id="qr-login-section" class="space-y-3">
                         <div id="reader" class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 min-h-[220px]"></div>
@@ -1088,6 +1090,23 @@ def index():
     )
 
 
+# DIRECT MAGIC LOGIN ROUTE PARA SA DEFAULT CAMERA NG IBANG DEVICES
+@app.route("/qr-auth/<token>")
+def qr_direct_auth(token):
+    user = authenticate_user_by_qr(token)
+    if user:
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+        }
+        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+    else:
+        flash("❌ Invalid o expired na QR Pass.", "danger")
+    return redirect(url_for("index"))
+
+
 @app.route("/profile")
 def profile():
     session_user = session.get("user")
@@ -1388,7 +1407,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register.",
             "danger",
         )
         return redirect(url_for("index"))
@@ -1450,17 +1469,12 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    qr_payload = {
-        "system": "KABS_SECURE_AUTH",
-        "id": v_id,
-        "name": name,
-        "token": auth_token,
-        "code": unique_volunteer_code,
-    }
+    # Ang nilalaman ng QR Code ay direct URL link para kahit default camera app ng kahit anong phone ay mag-auto login agad
+    qr_magic_link = url_for("qr_direct_auth", token=auth_token, _external=True)
 
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
-    img = qrcode.make(json.dumps(qr_payload))
+    img = qrcode.make(qr_magic_link)
     img.save(qr_path)
 
     cursor.execute(
