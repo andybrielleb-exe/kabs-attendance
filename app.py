@@ -176,11 +176,11 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
             <div class="flex items-center space-x-2">
-                <button type="button" onclick="openManualModal()" class="text-xs text-slate-300 hover:text-white bg-slate-800 border border-slate-700 hover:bg-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all">
-                    <span>📘</span> <span class="hidden sm:inline">KABS</span> Manual
+                <button type="button" onclick="openManualModal()" class="text-xs text-slate-200 hover:text-white bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-semibold shadow-sm transition-all">
+                    <span>📖</span> KABS Full Manual
                 </button>
                 {% if user %}
-                <span class="text-xs text-slate-300 hidden md:inline">| Welcome, <b class="text-white">{{ user.name }}</b></span>
+                <span class="text-xs text-slate-300 hidden md:inline">| <b class="text-white">{{ user.name }}</b></span>
                 <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">Log Out</a>
                 {% endif %}
             </div>
@@ -246,10 +246,10 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- REGISTRATION FORM WITH MANUAL CHECKBOX -->
+                <!-- REGISTRATION FORM WITH MANDATORY SCROLL-TO-END CHECK -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Register New Volunteer</h2>
-                    <p class="text-xs text-slate-500 mb-4">Para sa mga bagong volunteers ng SK Payatas.</p>
+                    <p class="text-xs text-slate-500 mb-4">Maging opisyal na KABS Youth Volunteer ng SK Payatas.</p>
                     <form action="/register" method="POST" class="space-y-3">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
@@ -264,20 +264,25 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <!-- MANDATORY TERMS & MANUAL CHECKBOX -->
+                        <!-- STRICT MANUAL READING VERIFICATION -->
                         <div class="pt-2 border-t border-slate-100">
-                            <div class="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <input type="checkbox" id="agree_terms" name="agree_terms" required class="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer">
-                                <label for="agree_terms" class="text-xs text-slate-600 leading-snug cursor-pointer select-none">
-                                    Nabasang mabuti at sumasang-ayon ako sa mga alituntunin ng 
-                                    <button type="button" onclick="openManualModal()" class="text-blue-600 font-bold underline hover:text-blue-800">
-                                        KABS Volunteer Manual & Code of Conduct
-                                    </button>.
-                                </label>
+                            <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-amber-900">Mandatory Manual Verification</span>
+                                    <button type="button" onclick="openManualModal()" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded-lg shadow-sm transition-all">
+                                        Basahin ang Manual Hanggang Dulo ↗
+                                    </button>
+                                </div>
+                                <div class="flex items-start gap-2 pt-1">
+                                    <input type="checkbox" id="agree_terms" name="agree_terms" required disabled class="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 cursor-not-allowed">
+                                    <label for="agree_terms" id="agree_label" class="text-[11px] text-slate-500 leading-snug select-none">
+                                        🔒 <i>Kailangang buksan at i-scroll ang KABS Volunteer Manual hanggang sa pinakadulo bago ma-unlock ang checkbox na ito.</i>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
-                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">
+                        <button type="submit" id="register_submit_btn" disabled class="w-full py-2.5 bg-slate-400 text-white font-semibold text-sm rounded-lg shadow-sm cursor-not-allowed transition-all">
                             Register & Generate Pass
                         </button>
                     </form>
@@ -347,13 +352,13 @@ MAIN_TEMPLATE = """
                     <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.volunteer_code }}</div><br>
                     <div class="flex justify-center gap-2">
                         <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
-                        <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">Read Manual</button>
+                        <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">📖 View Manual</button>
                     </div>
                 </div>
             </div>
         {% endif %}
 
-        <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
+        <!-- ATTENDANCE TABLE WITH EXPORT BUTTON -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                 <div>
@@ -429,77 +434,296 @@ MAIN_TEMPLATE = """
         </div>
     </main>
 
-    <!-- KABS VOLUNTEER MANUAL MODAL POPUP -->
-    <div id="manual-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200">
-            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+    <!-- BUONG KABS VOLUNTEER MANUAL MODAL (WITH SCROLL TO END ENFORCEMENT) -->
+    <div id="manual-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            <!-- MODAL HEADER -->
+            <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
                 <div>
-                    <h3 class="text-base font-bold text-slate-900">KABS Youth Volunteers Program Manual</h3>
-                    <p class="text-xs text-slate-500">Kabataan para sa Aksyon, Bayanihan, at Serbisyo | SK Payatas</p>
+                    <h3 class="text-base sm:text-lg font-extrabold tracking-wide">KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                    <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
                 </div>
-                <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">&times;</button>
+                <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-white text-2xl font-bold p-1 leading-none">&times;</button>
             </div>
             
-            <div class="p-6 overflow-y-auto space-y-5 text-xs text-slate-700 leading-relaxed">
-                <div>
-                    <h4 class="font-bold text-slate-900 text-sm mb-1">1. Ang 3 Haligi (3 Pillars of KABS)</h4>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><b>Action (Aksyon):</b> Enerhiya at inisyatiba ng kabataan para sa positibong pagbabago at aktibong pakikilahok sa komunidad.</li>
-                        <li><b>Bayanihan:</b> Diwa ng pagkakaisa, pagtutulungan, at pantay na kontribusyon para sa kapakanan ng lahat.</li>
-                        <li><b>Service (Serbisyo):</b> Puso ng KABS; tapat at bukal sa loob na paglilingkod para sa kapwa at barangay nang may pananagutan.</li>
-                    </ul>
-                </div>
+            <!-- SCROLLABLE BODY NG BUONG MANUAL -->
+            <div id="manual-content-scroll" onscroll="checkManualScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                
+                <!-- PROGRAM RATIONALE -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
+                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions. Similarly, a technical review by Romulo Virola and colleagues highlights the efforts of the Philippine National Statistical Coordination Board to integrate both formal and informal volunteer work into national economic measures, further emphasizing the statistical invisibility of volunteer contributions under current frameworks.</p>
+                    <p>Evaluations of the Bayanihang Bayan Program revealed that agencies such as the Philippine National Volunteer Service Coordinating Agency (PNVSCA) and various local government units (LGUs) often lack the institutional capacity for consistent planning, documentation, and program follow-through. The Kabataan para sa Aksyon, Bayanihan, at Serbisyo (KABS) program seeks to bridge this gap by creating an organized platform for youth to actively participate in volunteerism, community development, and civic engagement.</p>
+                </section>
 
-                <div>
-                    <h4 class="font-bold text-slate-900 text-sm mb-1">2. Tungkulin ng mga Volunteers (Roles & Responsibilities)</h4>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><b>Be Committed:</b> Magpakita ng dedikasyon sa mga nakatalagang tungkulin at programa.</li>
-                        <li><b>Follow Instructions:</b> Sumunod sa mga alituntunin at gabay ng coordinators at team leaders.</li>
-                        <li><b>Maintain Professional Conduct:</b> Maging magalang sa kapwa volunteers, opisyal ng SK, at mga mamamayan.</li>
-                        <li><b>Respect Confidentiality:</b> Pangalagaan ang pribadong impormasyon ng programa at komunidad.</li>
-                        <li><b>Be Willing to Learn:</b> Maging bukas sa pagsasanay, mentoring, at pag-unlad ng kasanayan.</li>
-                    </ul>
-                </div>
+                <!-- PROGRAM DESCRIPTION -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Description</h4>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. The program was institutionalized as mandate of the Barangay Payatas Comprehensive Youth Code Ordinance, which upholds the rights of young people to participate in community development and nation-building through volunteerism, and the SK Payatas Resolution No. 012 S. 2024 entitled <i>"A Resolution Proclaiming The Selection and Appointment Process for SK Payatas Official Youth Volunteers for 2024-2025."</i></p>
+                    <p>Moreover, the SK Payatas Resolution No. 42 S. 2025 entitled <i>"A Resolution Adopting the First Payatas Youth Parliament Resolution Strengthening the Youth Development and Empowerment on Grassroots Level Through Seminars and Youth Volunteering Activities,"</i> strengthens the KABS program by making it the main way to bring seminars, trainings, and community activities closer to the youth. The program mobilizes youth across various programs, projects, and activities (PPAs) organized by the Sangguniang Kabataan of Barangay Payatas.</p>
+                </section>
 
-                <div>
-                    <h4 class="font-bold text-slate-900 text-sm mb-1">3. Code of Conduct (Pamantayan sa Pagkilos)</h4>
-                    <p class="mb-2">Inaasahan ang bawat volunteer na itaguyod ang integridad ng SK Payatas at KABS Program:</p>
+                <!-- PROGRAM OBJECTIVES -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Objectives</h4>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li>Pumasok sa oras at tuparin ang mga gawaing tinanggap.</li>
-                        <li>Bawal ang diskriminasyon, panliligalig, o anumang marahas na kilos sa kapwa.</li>
-                        <li>Magsuot ng angkop at desenteng kasuotan o opisyal na uniporme habang naka-duty.</li>
-                        <li>Igalang ang mga opisyal at gamit ng Sangguniang Kabataan.</li>
-                        <li>mahigpit na <b>ipinagbabawal ang paggamit o pagiging nasa impluwensya ng alak o ipinagbabawal na gamot</b> habang nagboboluntaryo.</li>
-                        <li>Ang anumang pandaraya o pamemeke sa talaan ng attendance ay magdudulot ng agarang pagkatanggal sa programa.</li>
+                        <li>To promote active youth participation in community development and local governance.</li>
+                        <li>To develop leadership, teamwork, and civic responsibility among young volunteers.</li>
+                        <li>To provide opportunities for skill-building through training, service, and hands-on community involvement.</li>
+                        <li>To have an organized volunteer deployment.</li>
+                        <li>To foster a culture of volunteerism and social responsibility among the youth.</li>
+                        <li>To protect the rights of the youth volunteers.</li>
+                        <li>To ensure that the volunteers' efforts are seen and recognized.</li>
                     </ul>
-                </div>
+                </section>
 
-                <div>
-                    <h4 class="font-bold text-slate-900 text-sm mb-1">4. Karapatan ng mga Volunteers (Rights of Volunteers)</h4>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Karapatang tratuhin nang may paggalang, patas, at walang diskriminasyon.</li>
-                        <li>Karapatan sa ligtas at maayos na kapaligiran habang naglilingkod.</li>
-                        <li>Karapatan sa maayos na oryentasyon, kagamitan, at suporta sa mga aktibidad.</li>
-                        <li>Karapatang kilalanin ang serbisyo sa pamamagitan ng Certificates at Service Records.</li>
-                        <li>Karapatan sa proteksyon ng personal na data alinsunod sa Data Privacy Act.</li>
+                <!-- KABS 3 PILLARS -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
+                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change. Action transforms ideas into tangible results that directly benefit the barangay and its people.</p>
+                        </div>
+                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
+                            <p class="text-xs">Embodies the Filipino spirit of communal unity and shared responsibility. KABS is not about individual achievement but collective progress where everyone contributes to shared goals.</p>
+                        </div>
+                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
+                            <p class="text-xs">The heart of KABS, reflecting selflessness, dedication, honesty, and accountability to uplift lives and strengthen community resilience.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KABS FRAMEWORK -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS Framework</h4>
+                    <div class="space-y-2 text-xs">
+                        <p><b>Recruitment and Selection:</b> Open, inclusive, and community-driven. No screening is conducted for auxiliary volunteers to encourage broad participation. Core Volunteers are selected through formal applications, criteria-based evaluation by the SK Council Selection Committee, endorsement, and confirmation.</p>
+                        <p><b>Orientation and Training:</b> Introduces program objectives, values, Code of Conduct, and builds leadership, first aid, and disaster preparedness skills.</p>
+                        <p><b>Deployment and Engagement:</b> Systematic deployment guided by clear schedules, tasks, and coordinator supervision.</p>
+                        <p><b>Monitoring, Evaluation, and Documentation:</b> Tracks attendance through electronic sheets and maintains records for periodic accomplishment reports.</p>
+                        <p><b>Incentives and Recognition:</b> Certificates of Participation/Recognition, nominations for Local Outstanding Volunteers Awards in Quezon City, and priority access to SK programs.</p>
+                    </div>
+                </section>
+
+                <!-- ROLES, CORE VS AUXILIARY, MANAGERS & SECRETARIAT -->
+                <section class="space-y-3 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Role and Responsibilities of Volunteers</h4>
+                    <ul class="list-disc pl-5 space-y-1 text-xs">
+                        <li><b>Be Committed:</b> Show dedication to the tasks and responsibilities assigned.</li>
+                        <li><b>Follow Instructions:</b> Carry out directions from coordinators and team leaders.</li>
+                        <li><b>Maintain Professional Conduct:</b> Act responsibly and respectfully in all volunteer engagements.</li>
+                        <li><b>Communicate Effectively:</b> Share information clearly, listen actively, and raise concerns constructively.</li>
+                        <li><b>Respect Confidentiality:</b> Protect sensitive information regarding the program and community.</li>
+                        <li><b>Work as a Team & Be Willing to Learn:</b> Embrace opportunities for mutual growth.</li>
                     </ul>
-                </div>
+
+                    <h5 class="font-bold text-slate-900 text-sm mt-3">Core Volunteers vs. Auxiliary Volunteers</h5>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border border-slate-200 rounded-lg">
+                            <thead class="bg-slate-100 font-bold text-slate-700">
+                                <tr>
+                                    <th class="p-2 border-b">Category</th>
+                                    <th class="p-2 border-b">Core Volunteers</th>
+                                    <th class="p-2 border-b">Auxiliary Volunteers</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr><td class="p-2 font-semibold">Commitment</td><td class="p-2">Regular, long-term commitment</td><td class="p-2">On-call or occasional participation</td></tr>
+                                <tr><td class="p-2 font-semibold">Availability</td><td class="p-2">Mostly available</td><td class="p-2">Joins when available or needed</td></tr>
+                                <tr><td class="p-2 font-semibold">Participation</td><td class="p-2">Active in planning, implementation & evaluation</td><td class="p-2">Mostly supports during specific events</td></tr>
+                                <tr><td class="p-2 font-semibold">Training</td><td class="p-2">Full training (leadership, first aid, governance)</td><td class="p-2">Basic or event-specific orientation only</td></tr>
+                                <tr><td class="p-2 font-semibold">Role</td><td class="p-2">Can lead and manage specific tasks</td><td class="p-2">Assists in implementation</td></tr>
+                                <tr><td class="p-2 font-semibold">Selection/Retention</td><td class="p-2">Top volunteers with highest accumulated hours</td><td class="p-2">Flexible entry point for youth</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="text-xs space-y-1 mt-2">
+                        <p><b>Volunteer Managers:</b> The KABS Managers shall be the <b>SK Chairperson</b> and <b>SK Adviser</b>, tasked with coordinating, mentoring, and monitoring volunteer teams.</p>
+                        <p><b>Program Secretariat:</b> Administrative and operational support appointed from active volunteers to manage records, documentation, and social media platforms.</p>
+                    </div>
+                </section>
+
+                <!-- VOLUNTEER ASSIGNMENTS: 4 COMMITTEES -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div class="p-3 bg-slate-50 border rounded-xl">
+                            <span class="font-bold text-slate-900 block mb-1">1. Operations Committee</span>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li><i>Logistics and Supplies:</i> Kits, equipment, transport, food pack distribution.</li>
+                                <li><i>Registration and Secretariat:</i> Check-in, attendance sheets, IDs.</li>
+                                <li><i>Food and Refreshments:</i> Meal distribution, dietary management.</li>
+                            </ul>
+                        </div>
+                        <div class="p-3 bg-slate-50 border rounded-xl">
+                            <span class="font-bold text-slate-900 block mb-1">2. Production Committee</span>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li><i>Program Flow:</i> Coordinates schedule, performers, and speakers.</li>
+                                <li><i>Board of Tabulators / Scorers:</i> Scores and stats validation.</li>
+                                <li><i>Master of Ceremonies / Announcers:</i> Audience engagement and commentary.</li>
+                                <li><i>Audio-Visual Support:</i> Lights, sounds, projections.</li>
+                            </ul>
+                        </div>
+                        <div class="p-3 bg-slate-50 border rounded-xl">
+                            <span class="font-bold text-slate-900 block mb-1">3. Services Committee</span>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li><i>Venue Management:</i> Set-up, layout, and post-event cleanup.</li>
+                                <li><i>Guest Relations & Crowd Control:</i> Guiding attendees, seating flow.</li>
+                                <li><i>First Aid & Emergency Management:</i> Basic medical response.</li>
+                            </ul>
+                        </div>
+                        <div class="p-3 bg-slate-50 border rounded-xl">
+                            <span class="font-bold text-slate-900 block mb-1">4. Engagement Committee</span>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li><i>Documentation and Media:</i> Photos, videos, livestream support.</li>
+                                <li><i>Publicity & Communication:</i> Letters, captions, press releases.</li>
+                                <li><i>Graphics and Visuals:</i> Posters, branding, digital assets.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- DEPLOYMENT, COMMUNICATION & MONITORING TIMELINE -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Deployment Guidelines & Annual Cycle</h4>
+                    <p class="text-xs">Sign-ups are conducted through Google Forms 1 week prior to events; final schedules are released 2 days prior. Attendance must be logged via electronic form.</p>
+                    <div class="p-3 bg-slate-50 border rounded-xl space-y-1 text-xs">
+                        <p><b>January:</b> Volunteer Registration and Reactivation Period.</p>
+                        <p><b>May - June:</b> Mid-Year Volunteer Monitoring (Top 30 promoted/retained as Core; inactive reclassified).</p>
+                        <p><b>June:</b> Mid-Year Registration & Reactivation Period.</p>
+                        <p><b>December:</b> Year-End Monitoring, Evaluation & Volunteer Service Recognition Ceremony.</p>
+                    </div>
+                    <div class="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs font-semibold">
+                        ⚠️ Tampering is Prohibited: Any form of dishonesty, tampering, or falsification of attendance records will result in disqualification from program benefits and immediate removal from the KABS program.
+                    </div>
+                </section>
+
+                <!-- PERKS AND BENEFITS -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS Perks and Benefits</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border border-slate-200 rounded-lg">
+                            <thead class="bg-slate-100 font-bold text-slate-700">
+                                <tr>
+                                    <th class="p-2 border-b">Benefits and Perks</th>
+                                    <th class="p-2 border-b">Core Volunteers</th>
+                                    <th class="p-2 border-b">Auxiliary Volunteers</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr><td class="p-2 font-semibold">Certificate of Contribution</td><td class="p-2">Yes (upon request)</td><td class="p-2">Yes (upon request)</td></tr>
+                                <tr><td class="p-2 font-semibold">Transcript of Service Record</td><td class="p-2">Yes (Top 20 Awardees)</td><td class="p-2">Yes (upon request)</td></tr>
+                                <tr><td class="p-2 font-semibold">Event Kits and Meals</td><td class="p-2">Yes</td><td class="p-2">Yes</td></tr>
+                                <tr><td class="p-2 font-semibold">Special Kits</td><td class="p-2">Yes (Top 20 Year-End)</td><td class="p-2">No</td></tr>
+                                <tr><td class="p-2 font-semibold">Capacity-Building Opportunities</td><td class="p-2">Yes</td><td class="p-2">Depends on records</td></tr>
+                                <tr><td class="p-2 font-semibold">Training & Development Sessions</td><td class="p-2">Priority</td><td class="p-2">Depends on records</td></tr>
+                                <tr><td class="p-2 font-semibold">Letter of Recommendation</td><td class="p-2">Yes</td><td class="p-2">Depends on records</td></tr>
+                                <tr><td class="p-2 font-semibold">Gawad Parangal Awards</td><td class="p-2">Top 5 automatic recipients</td><td class="p-2">Depends on records</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- CODE OF CONDUCT -->
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                    <ul class="list-disc pl-5 space-y-1 text-xs">
+                        <li><b>Commitment to Service:</b> Perform duties with a positive attitude; be punctual and dependable.</li>
+                        <li><b>Respect for Others:</b> Treat everyone with dignity; zero tolerance for discrimination or harassment.</li>
+                        <li><b>Professional Behavior:</b> Address SK Council members with proper honorific titles (e.g., "Chairperson", "Kagawad"); wear official uniform or neat, modest attire.</li>
+                        <li><b>Confidentiality and Privacy:</b> Protect sensitive organization and community data.</li>
+                        <li><b>Safety and Health:</b> Prioritize safety; report unsafe conditions or injuries immediately.</li>
+                        <li><b>Accountability and Honesty:</b> Responsible use of resources; avoid theft, fraud, or misuse of authority.</li>
+                        <li><b>Prohibition of Substance Use:</b> Refrain from consuming or being under the influence of alcohol or prohibited drugs while on volunteer duty.</li>
+                        <li><b>Conflict of Interest & Protection of Minors:</b> Avoid conflicting personal interests; exercise utmost safeguarding when working with children and elderly.</li>
+                        <li><b>Termination of Role:</b> Violations may result in disciplinary action and removal from KABS.</li>
+                    </ul>
+                </section>
+
+                <!-- RIGHTS OF VOLUNTEERS & PROTECTION MECHANISM -->
+                <section class="space-y-2 pb-2">
+                    <h4 class="font-extrabold text-slate-900 text-base">Rights of Volunteers and Protection Mechanism</h4>
+                    <p class="text-xs">Volunteers are entitled to: Right to Respect and Fair Treatment, Safe Working Conditions, Information and Training, Support and Supervision, Recognition, Privacy and Confidentiality, Participation and Voice, and the Right to Withdraw respectfully.</p>
+                    <p class="text-xs"><b>Protection Mechanism:</b> Safe channel to raise concerns. All submissions are treated confidentially, acknowledged within <b>3 working days</b>, and resolved within <b>15 working days</b> without fear of retaliation.</p>
+                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual.</p>
+                        <p class="text-[11px] text-emerald-700">Maaari mo nang pindutin ang button sa ibaba upang i-unlock ang iyong rehistrasyon.</p>
+                    </div>
+                </section>
+
             </div>
 
-            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-2xl">
-                <button type="button" onclick="closeManualModal()" class="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow transition-all">
-                    Naiintindihan Ko
+            <!-- MODAL FOOTER -->
+            <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
+                <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
+                    ⬇️ Mag-scroll pababa para ma-unlock ang confirmation...
+                </span>
+                <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
+                    Sumasang-ayon Ako (Unlock Registration)
                 </button>
             </div>
         </div>
     </div>
 
     <script>
+        let hasReadToEnd = false;
+
         function openManualModal() {
             document.getElementById('manual-modal').classList.remove('hidden');
         }
         function closeManualModal() {
             document.getElementById('manual-modal').classList.add('hidden');
+        }
+
+        // Tinitingnan kung narating na ang ilalim ng scroll box
+        function checkManualScroll(element) {
+            // Buffer ng 25px para sa iba't ibang screen resolutions
+            if (element.scrollHeight - element.scrollTop <= element.clientHeight + 25) {
+                if (!hasReadToEnd) {
+                    hasReadToEnd = true;
+                    const btn = document.getElementById('agree-modal-btn');
+                    btn.disabled = false;
+                    btn.classList.remove('bg-slate-400', 'cursor-not-allowed');
+                    btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700', 'cursor-pointer');
+                    
+                    const prompt = document.getElementById('scroll-prompt-text');
+                    prompt.innerText = "✅ Nabasa mo na ang buong manual!";
+                    prompt.classList.remove('text-amber-700', 'animate-pulse');
+                    prompt.classList.add('text-emerald-700');
+                }
+            }
+        }
+
+        function acceptManualTerms() {
+            if (!hasReadToEnd) return;
+            
+            // I-unlock at lagyan ng check ang checkbox sa labas
+            const checkbox = document.getElementById('agree_terms');
+            if (checkbox) {
+                checkbox.disabled = false;
+                checkbox.checked = true;
+            }
+
+            const label = document.getElementById('agree_label');
+            if (label) {
+                label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual.";
+                label.classList.remove('text-slate-500');
+                label.classList.add('text-slate-800');
+            }
+
+            const submitBtn = document.getElementById('register_submit_btn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('bg-slate-400', 'cursor-not-allowed');
+                submitBtn.classList.add('bg-slate-900', 'hover:bg-slate-800', 'cursor-pointer');
+            }
+
+            closeManualModal();
         }
 
         {% if not user %}
@@ -809,7 +1033,6 @@ def register():
     contact = request.form.get("contact", "").strip()
     agree_terms = request.form.get("agree_terms")
 
-    # Pagsusuri kung binuksan at minarkahan ang checkbox ng Manual
     if not agree_terms:
         flash("❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register.", "danger")
         return redirect(url_for("index"))
