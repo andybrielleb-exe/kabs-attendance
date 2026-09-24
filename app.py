@@ -630,38 +630,51 @@ def register():
     return redirect(url_for("index"))
 
 
-@app.route("/login", methods=["POST"])
-def login():
-    email = request.form.get("email", "").strip().lower()
-    contact = request.form.get("contact", "").strip()
-
-    if not email.endswith("@gmail.com"):
-        flash("❌ Email must end with @gmail.com", "danger")
+@app.route("/log-self-attendance", methods=["POST"])
+def log_self_attendance():
+    user = session.get("user")
+    if not user:
+        flash("Kailangan munang mag-login.", "danger")
         return redirect(url_for("index"))
+
+    agenda = request.form.get("agenda", "").strip()
+    task = request.form.get("task", "").strip()
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+    # Tingnan kung may bukas pang record na walang time_out
     cursor.execute(
-        "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
+        "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
         if DATABASE_URL
-        else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
-        (email, contact),
+        else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        (user["id"],),
     )
-    user = cursor.fetchone()
+    active_record = cursor.fetchone()
+
+    if active_record:
+        cursor.execute(
+            "UPDATE attendance SET time_out = %s WHERE id = %s"
+            if DATABASE_URL
+            else "UPDATE attendance SET time_out = ? WHERE id = ?",
+            (now, active_record[0]),
+        )
+        flash(f"🔴 TIME OUT recorded for {user['name']} ({now})", "success")
+    else:
+        agenda_val = agenda if agenda else "General Assembly"
+        task_val = task if task else "Volunteer Duty"
+        cursor.execute(
+            "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
+            if DATABASE_URL
+            else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
+            (user["id"], agenda_val, task_val, now),
+        )
+        flash(f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})", "success")
+
+    conn.commit()
     cursor.close()
     conn.close()
-
-    if user:
-        session["user"] = {
-            "id": user[0],
-            "name": user[1],
-            "email": user[2],
-            "qr_code": user[3],
-            "volunteer_code": user[4],
-        }
-        flash(f"✅ Welcome back, {user[1]}!", "success")
-    else:
-        flash("❌ Walang profile na tumugma sa email o contact number na nilagay.", "danger")
 
     return redirect(url_for("index"))
 
