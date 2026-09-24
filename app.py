@@ -198,6 +198,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
+            <!-- LOGGED OUT VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -253,31 +254,68 @@ MAIN_TEMPLATE = """
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits)</label>
-                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
                     </form>
                 </div>
             </div>
         {% else %}
+            <!-- LOGGED IN VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <h2 class="text-base font-bold text-slate-900 mb-1">Punch Attendance</h2>
-                    <p class="text-xs text-slate-500 mb-4">I-record ang Time In o Time Out para sa araw na ito.</p>
                     
-                    <form action="/log-self-attendance" method="POST" class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
-                            <input type="text" name="agenda" placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                    {% if active_record %}
+                        <!-- TIME OUT CARD (WALANG RE-TYPING NA KAILANGAN) -->
+                        <div class="flex items-center justify-between mb-2">
+                            <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                                Clocked In
+                            </span>
                         </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
-                            <input type="text" name="task" placeholder="e.g. Volunteer Duty" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-time in. Pindutin lamang ang button sa ibaba para mag-Time Out.</p>
+
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Agenda:</span>
+                                <span class="font-bold text-slate-800">{{ active_record[1] }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Assigned Task:</span>
+                                <span class="font-bold text-slate-800">{{ active_record[2] }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Time In:</span>
+                                <span class="font-bold text-emerald-700">{{ active_record[3] }}</span>
+                            </div>
                         </div>
-                        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">
-                            Submit Attendance (Time In / Out)
-                        </button>
-                    </form>
+
+                        <form action="/log-self-attendance" method="POST">
+                            <button type="submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                                <span>🔴</span> Punch Time Out
+                            </button>
+                        </form>
+
+                    {% else %}
+                        <!-- TIME IN CARD (NORMAL FORM) -->
+                        <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
+                        <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
+                        
+                        <form action="/log-self-attendance" method="POST" class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
+                                <input type="text" name="agenda" required placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
+                                <input type="text" name="task" required placeholder="e.g. Waste Segregation" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            </div>
+                            <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2">
+                                <span>🟢</span> Punch Time In
+                            </button>
+                        </form>
+                    {% endif %}
+
                 </div>
 
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
@@ -417,8 +455,21 @@ MAIN_TEMPLATE = """
 @app.route("/")
 def index():
     user = session.get("user")
+    active_record = None
+
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    if user:
+        # Kunin ang active record para malaman kung naka-Time In na
+        cursor.execute(
+            "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
+            if DATABASE_URL
+            else "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+            (user["id"],),
+        )
+        active_record = cursor.fetchone()
+
     cursor.execute(
         """
         SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
@@ -433,9 +484,9 @@ def index():
     conn.close()
 
     if os.path.exists(os.path.join("templates", "index.html")):
-        return render_template("index.html", user=user, logs=logs)
+        return render_template("index.html", user=user, logs=logs, active_record=active_record)
 
-    return render_template_string(MAIN_TEMPLATE, user=user, logs=logs)
+    return render_template_string(MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record)
 
 
 @app.route("/login-qr-api", methods=["POST"])
@@ -521,9 +572,6 @@ def log_self_attendance():
         flash("Kailangan munang mag-login.", "danger")
         return redirect(url_for("index"))
 
-    agenda = request.form.get("agenda", "").strip()
-    task = request.form.get("task", "").strip()
-
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -536,6 +584,7 @@ def log_self_attendance():
     )
     active_record = cursor.fetchone()
 
+    # Kung may active session, Time Out agad nang hindi humihingi ng bagong input
     if active_record:
         cursor.execute(
             "UPDATE attendance SET time_out = %s WHERE id = %s"
@@ -545,8 +594,11 @@ def log_self_attendance():
         )
         flash(f"🔴 TIME OUT recorded for {user['name']} ({now})", "success")
     else:
+        agenda = request.form.get("agenda", "").strip()
+        task = request.form.get("task", "").strip()
         agenda_val = agenda if agenda else "General Assembly"
         task_val = task if task else "Volunteer Duty"
+
         cursor.execute(
             "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
             if DATABASE_URL
