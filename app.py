@@ -25,6 +25,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
@@ -114,13 +117,11 @@ def init_db():
 init_db()
 
 
-def process_qr_data(qr_data_str, agenda="", task=""):
+def authenticate_user_by_qr(qr_data_str):
     qr_data_str = qr_data_str.strip()
-    v_id = None
-    name = None
-
     conn = get_db_connection()
     cursor = conn.cursor()
+    user = None
 
     try:
         data = json.loads(qr_data_str)
@@ -128,67 +129,27 @@ def process_qr_data(qr_data_str, agenda="", task=""):
             v_id = data.get("id")
             token = data.get("token")
             cursor.execute(
-                "SELECT id, name FROM volunteers WHERE id = %s AND auth_token = %s"
+                "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
                 if DATABASE_URL
-                else "SELECT id, name FROM volunteers WHERE id = ? AND auth_token = ?",
+                else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
                 (v_id, token),
             )
-            volunteer = cursor.fetchone()
-            if volunteer:
-                v_id, name = volunteer[0], volunteer[1]
+            user = cursor.fetchone()
     except Exception:
         pass
 
-    if not v_id:
+    if not user:
         cursor.execute(
-            "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+            "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
             if DATABASE_URL
-            else "SELECT id, name FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+            else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
             (qr_data_str,),
         )
-        volunteer = cursor.fetchone()
-        if volunteer:
-            v_id, name = volunteer[0], volunteer[1]
+        user = cursor.fetchone()
 
-    if not v_id:
-        cursor.close()
-        conn.close()
-        return False, f"❌ Hindi kinikilala ang code: '{qr_data_str}'."
-
-    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-
-    cursor.execute(
-        "SELECT id, agenda, task FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
-        if DATABASE_URL
-        else "SELECT id, agenda, task FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (v_id,),
-    )
-    active_record = cursor.fetchone()
-
-    if active_record:
-        cursor.execute(
-            "UPDATE attendance SET time_out = %s WHERE id = %s"
-            if DATABASE_URL
-            else "UPDATE attendance SET time_out = ? WHERE id = ?",
-            (now, active_record[0]),
-        )
-        msg = f"🔴 TIME OUT recorded for {name} ({now})"
-    else:
-        agenda_val = agenda.strip() if agenda else "General Assembly"
-        task_val = task.strip() if task else "Volunteer Duty"
-
-        cursor.execute(
-            "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
-            if DATABASE_URL
-            else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
-            (v_id, agenda_val, task_val, now),
-        )
-        msg = f"🟢 TIME IN recorded for {name} | Agenda: {agenda_val} ({now})"
-
-    conn.commit()
     cursor.close()
     conn.close()
-    return True, msg
+    return user
 
 
 MAIN_TEMPLATE = """
@@ -237,77 +198,6 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- VIEW KAPAG NAKA-LOG OUT: SCANNER & LOGIN FORM -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <div class="flex items-center justify-between mb-1">
-                        <h2 class="text-base font-bold text-slate-900">Volunteer Login</h2>
-                        <button type="button" onclick="toggleLoginMode()" id="toggle-btn" class="text-xs text-blue-600 hover:text-blue-800 font-semibold underline">
-                            Use Credentials Instead
-                        </button>
-                    </div>
-                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para mag-login.</p>
-
-                    <div id="qr-login-section" class="space-y-3">
-                        <div id="reader" class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 min-h-[220px]"></div>
-                        <div id="scan-status" class="text-xs font-medium text-center text-slate-500">Initializing camera...</div>
-                        
-                        <div class="relative flex py-2 items-center">
-                            <div class="flex-grow border-t border-slate-200"></div>
-                            <span class="flex-shrink mx-2 text-xs text-slate-400">o i-type ang code</span>
-                            <div class="flex-grow border-t border-slate-200"></div>
-                        </div>
-
-                        <form action="/login-code" method="POST" class="flex space-x-2">
-                            <input type="text" name="volunteer_code" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
-                            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Enter</button>
-                        </form>MAIN_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KABS Attendance Portal</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-</head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <img src="/static/images/logo.jpg" alt="KABS Logo" class="w-11 h-11 rounded-lg object-cover bg-white p-0.5 border border-slate-700 shadow-sm" onerror="this.src='/static/images/logo.png';">
-                <div>
-                    <h1 class="font-extrabold text-white text-base sm:text-lg leading-tight">KABS ATTENDANCE PORTAL</h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo</p>
-                </div>
-            </div>
-            {% if user %}
-            <div class="flex items-center space-x-3">
-                <span class="text-xs text-slate-300">Welcome, <b class="text-white">{{ user.name }}</b></span>
-                <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">Log Out</a>
-            </div>
-            {% endif %}
-        </div>
-    </header>
-
-    <main class="max-w-6xl mx-auto px-4 pt-6 space-y-6">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <div class="space-y-2">
-            {% for category, message in messages %}
-              <div class="rounded-xl p-4 text-sm font-medium border shadow-sm
-                  {% if category == 'success' %} bg-emerald-50 text-emerald-800 border-emerald-200
-                  {% elif category == 'danger' %} bg-rose-50 text-rose-800 border-rose-200
-                  {% else %} bg-amber-50 text-amber-800 border-amber-200 {% endif %}">
-                  {{ message | safe }}
-              </div>
-            {% endfor %}
-            </div>
-          {% endif %}
-        {% endwith %}
-
-        {% if not user %}
-            <!-- VIEW KAPAG NAKA-LOG OUT: SCANNER & LOGIN FORM -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -363,14 +253,13 @@ MAIN_TEMPLATE = """
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits)</label>
-                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
                     </form>
                 </div>
             </div>
         {% else %}
-            <!-- VIEW KAPAG NAKA-LOG IN NA: PUNCH ATTENDANCE & PASS DETAILS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Punch Attendance</h2>
@@ -402,7 +291,6 @@ MAIN_TEMPLATE = """
             </div>
         {% endif %}
 
-        <!-- ATTENDANCE TABLE: LAGING NAKALABAS KAHIT NAKA-LOGIN O HINDI -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="p-4 border-b font-bold text-sm text-slate-800">Attendance Log</div>
             <div class="overflow-x-auto">
@@ -525,29 +413,153 @@ MAIN_TEMPLATE = """
 </html>
 """
 
+
 @app.route("/")
 def index():
     user = session.get("user")
-    logs = []
-    if user:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
-            FROM attendance
-            JOIN volunteers ON attendance.volunteer_id = volunteers.id
-            ORDER BY attendance.id DESC
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
         """
-        )
-        logs = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
+        FROM attendance
+        JOIN volunteers ON attendance.volunteer_id = volunteers.id
+        ORDER BY attendance.id DESC
+        LIMIT 50
+    """
+    )
+    logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
 
     if os.path.exists(os.path.join("templates", "index.html")):
         return render_template("index.html", user=user, logs=logs)
 
     return render_template_string(MAIN_TEMPLATE, user=user, logs=logs)
+
+
+@app.route("/login-qr-api", methods=["POST"])
+def login_qr_api():
+    data = request.json or {}
+    payload = data.get("qr_payload", "")
+    user = authenticate_user_by_qr(payload)
+
+    if user:
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "qr_code": user[3],
+            "volunteer_code": user[4],
+        }
+        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+        return jsonify({"success": True})
+
+    return jsonify({"success": False, "message": "❌ Invalid o hindi kinikilalang QR Code."})
+
+
+@app.route("/login-code", methods=["POST"])
+def login_code():
+    code = request.form.get("volunteer_code", "").strip()
+    user = authenticate_user_by_qr(code)
+
+    if user:
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "qr_code": user[3],
+            "volunteer_code": user[4],
+        }
+        flash(f"✅ Welcome back, {user[1]}!", "success")
+    else:
+        flash("❌ Invalid na Volunteer Code.", "danger")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.form.get("email", "").strip().lower()
+    contact = request.form.get("contact", "").strip()
+
+    if not email.endswith("@gmail.com"):
+        flash("❌ Email must end with @gmail.com", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
+        if DATABASE_URL
+        else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
+        (email, contact),
+    )
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if user:
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "qr_code": user[3],
+            "volunteer_code": user[4],
+        }
+        flash(f"✅ Welcome back, {user[1]}!", "success")
+    else:
+        flash("❌ Walang profile na tumugma sa email o contact number na nilagay.", "danger")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/log-self-attendance", methods=["POST"])
+def log_self_attendance():
+    user = session.get("user")
+    if not user:
+        flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    agenda = request.form.get("agenda", "").strip()
+    task = request.form.get("task", "").strip()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+    cursor.execute(
+        "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
+        if DATABASE_URL
+        else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        (user["id"],),
+    )
+    active_record = cursor.fetchone()
+
+    if active_record:
+        cursor.execute(
+            "UPDATE attendance SET time_out = %s WHERE id = %s"
+            if DATABASE_URL
+            else "UPDATE attendance SET time_out = ? WHERE id = ?",
+            (now, active_record[0]),
+        )
+        flash(f"🔴 TIME OUT recorded for {user['name']} ({now})", "success")
+    else:
+        agenda_val = agenda if agenda else "General Assembly"
+        task_val = task if task else "Volunteer Duty"
+        cursor.execute(
+            "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
+            if DATABASE_URL
+            else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
+            (user["id"], agenda_val, task_val, now),
+        )
+        flash(f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})", "success")
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return redirect(url_for("index"))
 
 
 @app.route("/register", methods=["POST"])
@@ -579,7 +591,7 @@ def register():
     if existing_user:
         cursor.close()
         conn.close()
-        flash(f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang gamit ang iyong Contact Number.", "warning")
+        flash(f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang gamit ang iyong QR o Contact Number.", "warning")
         return redirect(url_for("index"))
 
     auth_token = secrets.token_hex(16)
@@ -630,79 +642,10 @@ def register():
     return redirect(url_for("index"))
 
 
-@app.route("/log-self-attendance", methods=["POST"])
-def log_self_attendance():
-    user = session.get("user")
-    if not user:
-        flash("Kailangan munang mag-login.", "danger")
-        return redirect(url_for("index"))
-
-    agenda = request.form.get("agenda", "").strip()
-    task = request.form.get("task", "").strip()
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-
-    # Tingnan kung may bukas pang record na walang time_out
-    cursor.execute(
-        "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
-        if DATABASE_URL
-        else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (user["id"],),
-    )
-    active_record = cursor.fetchone()
-
-    if active_record:
-        cursor.execute(
-            "UPDATE attendance SET time_out = %s WHERE id = %s"
-            if DATABASE_URL
-            else "UPDATE attendance SET time_out = ? WHERE id = ?",
-            (now, active_record[0]),
-        )
-        flash(f"🔴 TIME OUT recorded for {user['name']} ({now})", "success")
-    else:
-        agenda_val = agenda if agenda else "General Assembly"
-        task_val = task if task else "Volunteer Duty"
-        cursor.execute(
-            "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
-            if DATABASE_URL
-            else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
-            (user["id"], agenda_val, task_val, now),
-        )
-        flash(f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})", "success")
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return redirect(url_for("index"))
-
-
 @app.route("/logout")
 def logout():
     session.pop("user", None)
     flash("Naka-log out ka na.", "success")
-    return redirect(url_for("index"))
-
-
-@app.route("/scan-api", methods=["POST"])
-def scan_api():
-    data = request.json or {}
-    payload = data.get("qr_payload", "")
-    agenda = data.get("agenda", "")
-    task = data.get("task", "")
-    success, message = process_qr_data(payload, agenda=agenda, task=task)
-    return jsonify({"success": success, "message": message})
-
-
-@app.route("/scan-manual", methods=["POST"])
-def scan_manual():
-    payload = request.form.get("qr_payload", "").strip()
-    agenda = request.form.get("agenda", "").strip()
-    task = request.form.get("task", "").strip()
-    success, message = process_qr_data(payload, agenda=agenda, task=task)
-    flash(message, "success" if success else "danger")
     return redirect(url_for("index"))
 
 
@@ -729,4 +672,5 @@ def delete_log(log_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
