@@ -138,31 +138,58 @@ init_db()
 
 
 def authenticate_user_by_qr(qr_data_str):
+    if not qr_data_str:
+        return None
+
     qr_data_str = qr_data_str.strip()
     conn = get_db_connection()
     cursor = conn.cursor()
     user = None
 
+    # 1. Subukang i-parse bilang JSON
     try:
         data = json.loads(qr_data_str)
-        if data.get("system") == "KABS_SECURE_AUTH":
+        if isinstance(data, dict):
             v_id = data.get("id")
             token = data.get("token")
-            cursor.execute(
-                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
-                if DATABASE_URL
-                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
-                (v_id, token),
-            )
-            user = cursor.fetchone()
+            v_code = data.get("code")
+
+            if v_id and token:
+                cursor.execute(
+                    "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
+                    if DATABASE_URL
+                    else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
+                    (v_id, token),
+                )
+                user = cursor.fetchone()
+
+            if not user and v_code:
+                cursor.execute(
+                    "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+                    if DATABASE_URL
+                    else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+                    (v_code.strip(),),
+                )
+                user = cursor.fetchone()
     except Exception:
         pass
 
+    # 2. Subukan gamit ang plain Volunteer Code (halimbawa: KABS-7F2D)
     if not user:
         cursor.execute(
             "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
             if DATABASE_URL
             else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+            (qr_data_str.upper(),),
+        )
+        user = cursor.fetchone()
+
+    # 3. Subukan gamit ang Token string
+    if not user:
+        cursor.execute(
+            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
+            if DATABASE_URL
+            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = ?",
             (qr_data_str,),
         )
         user = cursor.fetchone()
@@ -208,11 +235,9 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- OPTIMIZED MOBILE STICKY TOPBAR -->
+    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
-            
-            <!-- BRAND / LOGO (RESPONSIVE) -->
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
                 <img src="/static/images/logo.jpg" alt="Logo" class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-cover bg-white p-0.5 border border-slate-700 flex-shrink-0" onerror="this.src='/static/images/logo.png';">
                 <div class="min-w-0 leading-tight">
@@ -221,7 +246,6 @@ MAIN_TEMPLATE = """
                 </div>
             </a>
 
-            <!-- NAVIGATION BUTTONS (FIT SA PHONE) -->
             <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
                 {% if user %}
                 <a href="/profile" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
@@ -673,14 +697,14 @@ MAIN_TEMPLATE = """
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            location.reload();
+                            window.location.href = "/";
                         } else {
-                            alert(data.message);
+                            alert(data.message || "Invalid QR pass.");
                             location.reload();
                         }
                     })
                     .catch(() => {
-                        alert("Scan error occurred.");
+                        alert("Network o server connection error sa pag-scan.");
                         location.reload();
                     });
                 }).catch(err => console.error(err));
@@ -689,14 +713,14 @@ MAIN_TEMPLATE = """
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 200, height: 200 }, aspectRatio: 1.0 };
+            const config = { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 };
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
                 .then(() => {
-                    document.getElementById('scan-status').innerText = "📷 Camera active. Scan your QR.";
+                    document.getElementById('scan-status').innerText = "📷 Camera active. Itapat ang QR Code.";
                 })
                 .catch(err => {
                     document.getElementById('scan-status').innerHTML = 
-                        "<span class='text-rose-500 font-semibold'>⚠️ Allow camera permissions o mag-type ng code.</span>";
+                        "<span class='text-rose-500 font-semibold'>⚠️ Buksan ang camera permissions o mag-type ng volunteer code.</span>";
                 });
         }
 
@@ -1342,7 +1366,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register[cite: 5].",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
             "danger",
         )
         return redirect(url_for("index"))
