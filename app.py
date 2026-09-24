@@ -235,8 +235,8 @@ MAIN_TEMPLATE = """
                                 <input type="email" name="email" placeholder="juandelacruz@gmail.com" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits)</label>
-                                <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (Numbers only, 11 digits)</label>
+                                <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                             </div>
                             <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Access Portal & Pass</button>
                         </form>
@@ -256,8 +256,8 @@ MAIN_TEMPLATE = """
                             <input type="email" name="email" required placeholder="juandelacruz@gmail.com" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits)</label>
-                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (Numbers only, 11 digits)</label>
+                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
                     </form>
@@ -269,7 +269,6 @@ MAIN_TEMPLATE = """
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     
                     {% if active_record %}
-                        <!-- TIME OUT CARD (WALANG RE-TYPING) -->
                         <div class="flex items-center justify-between mb-2">
                             <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
@@ -300,7 +299,6 @@ MAIN_TEMPLATE = """
                         </form>
 
                     {% else %}
-                        <!-- TIME IN CARD -->
                         <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
                         <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
                         
@@ -340,7 +338,6 @@ MAIN_TEMPLATE = """
                     <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok at lumabas.</p>
                 </div>
                 
-                <!-- EXPORT TO EXCEL BUTTON -->
                 {% if user %}
                 <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -535,11 +532,9 @@ def export_attendance():
     cursor.close()
     conn.close()
 
-    # Gumawa ng in-memory CSV file na may UTF-8 BOM para mabuksan agad nang tama sa Excel
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Header Row
     writer.writerow([
         "Volunteer Code",
         "Volunteer Name",
@@ -556,7 +551,7 @@ def export_attendance():
             row[0],
             row[1],
             row[2],
-            f"'{row[3]}'", # May single quote para hindi mawala ang leading 0 ng phone number sa Excel
+            f"'{row[3]}'",
             row[4] if row[4] else "-",
             row[5] if row[5] else "-",
             row[6],
@@ -620,6 +615,11 @@ def login():
 
     if not email.endswith("@gmail.com"):
         flash("❌ Email must end with @gmail.com", "danger")
+        return redirect(url_for("index"))
+
+    # Backend Validation: Mga numero lang at dapat 11 digits
+    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+        flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
@@ -711,8 +711,9 @@ def register():
         flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
         return redirect(url_for("index"))
 
-    if len(contact) != 11 or not contact.isdigit():
-        flash("❌ Ang contact number ay dapat eksaktong 11 digits.", "danger")
+    # Backend Validation: Mga numero lang at dapat 11 digits
+    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+        flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
