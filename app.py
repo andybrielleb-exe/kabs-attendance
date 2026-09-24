@@ -200,13 +200,14 @@ MAIN_TEMPLATE = """
                     <span>📖</span> <span class="hidden md:inline">KABS</span> Manual
                 </button>
                 {% if user %}
-                <button type="button" onclick="focusProfileSection()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
+                <button type="button" onclick="openEditProfileModal()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
                     {% if user.get('profile_pic') %}
                         <img src="{{ user.get('profile_pic') }}" class="w-5 h-5 rounded-full object-cover">
                     {% else %}
                         <span>👤</span>
                     {% endif %}
                     <span class="font-bold text-white max-w-[120px] sm:max-w-none truncate">{{ user.get('name') }}</span>
+                    <span class="text-[10px] bg-blue-600/40 text-blue-300 px-1.5 py-0.5 rounded font-mono">Edit</span>
                 </button>
                 <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</a>
                 {% endif %}
@@ -314,7 +315,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW: PROFILE CARD SA TAAS -->
+            <!-- LOGGED IN VIEW: PROFILE BANNER CARD SA TAAS -->
             <div id="kabs-profile-card" class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm transition-all duration-300">
                 <div class="flex flex-col md:flex-row items-center justify-between gap-6">
                     <div class="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
@@ -345,19 +346,10 @@ MAIN_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- PROFILE ACTION BUTTONS -->
-                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-center gap-2">
-                        <label class="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer text-center transition-all flex items-center gap-1.5 shadow-sm">
-                            <span>📁</span> Choose Photo
-                            <input type="file" id="choose-photo-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
-                        </label>
-
-                        <button type="button" onclick="openSelfieModal()" class="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-all flex items-center gap-1.5 shadow-sm">
-                            <span>📸</span> Take Selfie
-                        </button>
-
-                        <button type="button" onclick="openEditProfileModal()" class="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
-                            <span>✏️</span> Edit Profile
+                    <!-- PINAG-ISANG EDIT PROFILE BUTTON -->
+                    <div>
+                        <button type="button" onclick="openEditProfileModal()" class="py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-2 shadow-sm">
+                            <span>✏️</span> Edit Profile & Photo
                         </button>
                     </div>
                 </div>
@@ -509,37 +501,37 @@ MAIN_TEMPLATE = """
         </div>
     </main>
 
-    <!-- CROPPER MODAL NA MAY DONE BUTTON -->
-    <div id="cropper-modal" class="fixed inset-0 bg-slate-900/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 class="font-bold text-slate-900 text-sm">✂️ Crop Your Profile Photo</h3>
-                <button type="button" onclick="closeCropperModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
-            </div>
-            
-            <div class="max-h-[55vh] overflow-hidden bg-slate-900 rounded-xl flex items-center justify-center">
-                <img id="image-to-crop" src="" class="max-w-full block">
-            </div>
-
-            <div class="flex justify-between items-center pt-2">
-                <span class="text-xs text-slate-500">I-drag o i-scale ang bilog para magkasya ang mukha.</span>
-                <div class="flex gap-2">
-                    <button type="button" onclick="closeCropperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
-                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
-                        <span>✓</span> Done
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- EDIT PROFILE MODAL -->
+    <!-- ALL-IN-ONE EDIT PROFILE MODAL (WITH PHOTO UPLOAD & TAKE SELFIE) -->
     {% if user %}
     <div id="edit-profile-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
             <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="font-bold text-slate-900 text-base">✏️ Edit KABS Profile</h3>
+                <h3 class="font-bold text-slate-900 text-base">✏️ Edit KABS Profile & Photo</h3>
                 <button type="button" onclick="closeEditProfileModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+
+            <!-- PROFILE PHOTO SECTION SA LOOB NG EDIT PROFILE -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center space-y-3">
+                <div class="relative w-20 h-20 mx-auto">
+                    {% if user.get('profile_pic') %}
+                        <img src="{{ user.get('profile_pic') }}" alt="Profile" class="w-20 h-20 rounded-full object-cover border-2 border-white shadow mx-auto">
+                    {% else %}
+                        <div class="w-20 h-20 rounded-full bg-slate-200 border border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-2xl mx-auto">
+                            👤
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="flex justify-center gap-2">
+                    <label class="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer transition-all flex items-center gap-1 shadow-sm">
+                        <span>📁</span> Choose Photo
+                        <input type="file" id="choose-photo-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+                    </label>
+
+                    <button type="button" onclick="openSelfieModal()" class="py-1.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-all flex items-center gap-1 shadow-sm">
+                        <span>📸</span> Take Selfie
+                    </button>
+                </div>
             </div>
             
             <form action="/edit-profile" method="POST" class="space-y-3">
@@ -565,6 +557,30 @@ MAIN_TEMPLATE = """
     </div>
     {% endif %}
 
+    <!-- CROPPER MODAL NA MAY DONE BUTTON -->
+    <div id="cropper-modal" class="fixed inset-0 bg-slate-900/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-slate-900 text-sm">✂️ Crop Your Profile Photo</h3>
+                <button type="button" onclick="closeCropperModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="max-h-[55vh] overflow-hidden bg-slate-900 rounded-xl flex items-center justify-center">
+                <img id="image-to-crop" src="" class="max-w-full block">
+            </div>
+
+            <div class="flex justify-between items-center pt-2">
+                <span class="text-xs text-slate-500">I-drag o i-scale para magkasya ang mukha.</span>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeCropperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
+                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                        <span>✓</span> Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SELFIE CAMERA CAPTURE MODAL -->
     <div id="selfie-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
@@ -578,7 +594,7 @@ MAIN_TEMPLATE = """
             </div>
             <div class="flex justify-end gap-2 pt-2">
                 <button type="button" onclick="closeSelfieModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
-                <button type="button" onclick="captureSelfieToCrop()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Proceed to Crop</button>
+                <button type="button" onclick="captureSelfieToCrop()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Crop</button>
             </div>
         </div>
     </div>
@@ -938,17 +954,6 @@ MAIN_TEMPLATE = """
         function closeEditProfileModal() {
             const modal = document.getElementById('edit-profile-modal');
             if (modal) modal.classList.add('hidden');
-        }
-
-        function focusProfileSection() {
-            const card = document.getElementById('kabs-profile-card');
-            if (card) {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.classList.add('ring-4', 'ring-blue-400', 'ring-offset-2');
-                setTimeout(() => {
-                    card.classList.remove('ring-4', 'ring-blue-400', 'ring-offset-2');
-                }, 1800);
-            }
         }
 
         // --- SELFIE CAMERA LOGIC ---
