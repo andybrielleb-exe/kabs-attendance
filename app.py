@@ -266,26 +266,26 @@ MAIN_TEMPLATE = """
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     
                     {% if active_record %}
-                        <!-- TIME OUT CARD (WALANG RE-TYPING NA KAILANGAN) -->
+                        <!-- TIME OUT CARD (WALANG RE-TYPING) -->
                         <div class="flex items-center justify-between mb-2">
                             <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                                Clocked In
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
+                                ● Clocked In
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-time in. Pindutin lamang ang button sa ibaba para mag-Time Out.</p>
+                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-duty. Pindutin lamang ang button para makapag-Time Out.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
                             <div class="flex justify-between">
-                                <span class="text-slate-500">Agenda:</span>
+                                <span class="text-slate-500 font-medium">Agenda:</span>
                                 <span class="font-bold text-slate-800">{{ active_record[1] }}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-slate-500">Assigned Task:</span>
+                                <span class="text-slate-500 font-medium">Assigned Task:</span>
                                 <span class="font-bold text-slate-800">{{ active_record[2] }}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-slate-500">Time In:</span>
+                                <span class="text-slate-500 font-medium">Time In:</span>
                                 <span class="font-bold text-emerald-700">{{ active_record[3] }}</span>
                             </div>
                         </div>
@@ -297,7 +297,7 @@ MAIN_TEMPLATE = """
                         </form>
 
                     {% else %}
-                        <!-- TIME IN CARD (NORMAL FORM) -->
+                        <!-- TIME IN CARD -->
                         <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
                         <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
                         
@@ -329,6 +329,7 @@ MAIN_TEMPLATE = """
             </div>
         {% endif %}
 
+        <!-- ATTENDANCE TABLE WITH PROTECTED DELETE BUTTON -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="p-4 border-b font-bold text-sm text-slate-800">Attendance Log</div>
             <div class="overflow-x-auto">
@@ -357,11 +358,19 @@ MAIN_TEMPLATE = """
                             </td>
                             {% if user %}
                             <td class="py-3 px-4 text-center">
-                                <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                    <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                        Delete
+                                {% if log[4] %}
+                                    <!-- NAKA-TIME OUT NA: PWEDENG BURAHIN -->
+                                    <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                        <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                            Delete
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <!-- CLOCKED IN PA: BAWAL BURAHIN -->
+                                    <button type="button" disabled title="Kailangan munang mag-Time Out bago mabura ang record na ito." class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                        Clocked In
                                     </button>
-                                </form>
+                                {% endif %}
                             </td>
                             {% endif %}
                         </tr>
@@ -461,7 +470,6 @@ def index():
     cursor = conn.cursor()
 
     if user:
-        # Kunin ang active record para malaman kung naka-Time In na
         cursor.execute(
             "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
             if DATABASE_URL
@@ -584,7 +592,6 @@ def log_self_attendance():
     )
     active_record = cursor.fetchone()
 
-    # Kung may active session, Time Out agad nang hindi humihingi ng bagong input
     if active_record:
         cursor.execute(
             "UPDATE attendance SET time_out = %s WHERE id = %s"
@@ -709,17 +716,32 @@ def delete_log(log_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # Suriin muna kung may time_out na ang buburahin
     cursor.execute(
-        "DELETE FROM attendance WHERE id = %s"
+        "SELECT time_out FROM attendance WHERE id = %s"
         if DATABASE_URL
-        else "DELETE FROM attendance WHERE id = ?",
+        else "SELECT time_out FROM attendance WHERE id = ?",
         (log_id,),
     )
-    conn.commit()
+    target = cursor.fetchone()
+
+    if not target:
+        flash("Hindi natagpuan ang attendance record.", "danger")
+    elif target[0] is None:
+        flash("❌ Bawal burahin ang attendance record habang naka-Clocked In pa! Mag-Time Out muna.", "warning")
+    else:
+        cursor.execute(
+            "DELETE FROM attendance WHERE id = %s"
+            if DATABASE_URL
+            else "DELETE FROM attendance WHERE id = ?",
+            (log_id,),
+        )
+        conn.commit()
+        flash("🗑️ Matagumpay na nabura ang attendance log!", "success")
+
     cursor.close()
     conn.close()
-
-    flash("🗑️ Matagumpay na nabura ang attendance log!", "success")
     return redirect(url_for("index"))
 
 
