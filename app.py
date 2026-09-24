@@ -27,9 +27,8 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_secret_key_2026_prod")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026")
 
-# Siguraduhin ang maayos na cross-device session cookies sa Render HTTPS
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -149,11 +148,16 @@ def authenticate_user_by_qr(raw_qr_input):
         return None
 
     cleaned_str = str(raw_qr_input).strip()
+    if (cleaned_str.startswith('"') and cleaned_str.endswith('"')) or (
+        cleaned_str.startswith("'") and cleaned_str.endswith("'")
+    ):
+        cleaned_str = cleaned_str[1:-1].strip()
+
     conn = get_db_connection()
     cursor = conn.cursor()
     user = None
 
-    # 1. Kung URL ang laman ng QR (hal. https://domain.com/qr-auth/TOKEN o ?code=KABS-XXXX)
+    # Step 1: URL Match (/qr-auth/TOKEN)
     token_url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", cleaned_str)
     if token_url_match:
         token = token_url_match.group(1).strip()
@@ -165,20 +169,7 @@ def authenticate_user_by_qr(raw_qr_input):
         )
         user = cursor.fetchone()
 
-    # 2. Kung Volunteer Code ang nahanap sa text o URL (hal. KABS-4F2A o KABS-7F2D)
-    if not user:
-        code_match = re.search(r"KABS-[A-Za-z0-9]+", cleaned_str, re.IGNORECASE)
-        if code_match:
-            found_code = code_match.group(0).upper().strip()
-            cursor.execute(
-                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
-                if DATABASE_URL
-                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-                (found_code,),
-            )
-            user = cursor.fetchone()
-
-    # 3. Kung JSON string ang QR data
+    # Step 2: JSON Payload Match
     if not user:
         try:
             fixed_json = cleaned_str.replace("'", '"')
@@ -208,7 +199,20 @@ def authenticate_user_by_qr(raw_qr_input):
         except Exception:
             pass
 
-    # 4. Direct match sa Token
+    # Step 3: Volunteer Code Regex Search (KABS-XXXX)
+    if not user:
+        code_match = re.search(r"KABS-[A-Za-z0-9]+", cleaned_str, re.IGNORECASE)
+        if code_match:
+            found_code = code_match.group(0).upper().strip()
+            cursor.execute(
+                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+                if DATABASE_URL
+                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+                (found_code,),
+            )
+            user = cursor.fetchone()
+
+    # Step 4: Token Direct Match
     if not user:
         cursor.execute(
             "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
@@ -259,7 +263,6 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -708,11 +711,19 @@ MAIN_TEMPLATE = """
 
         {% if not user %}
         let html5QrCode = null;
+        let isProcessingScan = false;
 
         function onScanSuccess(decodedText) {
+            if (isProcessingScan) return;
+            isProcessingScan = true;
+
+            const scanStatus = document.getElementById('scan-status');
+            if (scanStatus) {
+                scanStatus.innerHTML = "<span class='text-blue-600 font-bold animate-pulse'>⏳ Logging in with QR pass...</span>";
+            }
+
             if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('scan-status').innerHTML = "⏳ Logging in with QR pass...";
+                html5QrCode.stop().catch(() => {}).finally(() => {
                     fetch('/login-qr-api', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -721,17 +732,19 @@ MAIN_TEMPLATE = """
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            window.location.replace('/');
+                            window.location.href = "/";
                         } else {
                             alert(data.message || "Invalid QR pass.");
+                            isProcessingScan = false;
                             location.reload();
                         }
                     })
                     .catch(() => {
                         alert("Network o server connection error sa pag-scan.");
+                        isProcessingScan = false;
                         location.reload();
                     });
-                }).catch(err => console.error(err));
+                });
             }
         }
 
@@ -1090,7 +1103,6 @@ def index():
     )
 
 
-# DIRECT MAGIC LOGIN ROUTE PARA SA DEFAULT CAMERA NG IBANG DEVICES
 @app.route("/qr-auth/<token>")
 def qr_direct_auth(token):
     user = authenticate_user_by_qr(token)
@@ -1407,7 +1419,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register.",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
             "danger",
         )
         return redirect(url_for("index"))
@@ -1469,7 +1481,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # Ang nilalaman ng QR Code ay direct URL link para kahit default camera app ng kahit anong phone ay mag-auto login agad
+    # Ang QR Code ay naglalaman ng direct authentication link
     qr_magic_link = url_for("qr_direct_auth", token=auth_token, _external=True)
 
     qr_filename = f"volunteer_{v_id}.png"
