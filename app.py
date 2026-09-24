@@ -199,9 +199,7 @@ MAIN_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KABS Attendance Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    {% if user %}
     <script src="https://unpkg.com/html5-qrcode"></script>
-    {% endif %}
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
@@ -222,10 +220,10 @@ MAIN_TEMPLATE = """
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto px-4 pt-6">
+    <main class="max-w-6xl mx-auto px-4 pt-6 space-y-6">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            <div class="mb-6 space-y-2">
+            <div class="space-y-2">
             {% for category, message in messages %}
               <div class="rounded-xl p-4 text-sm font-medium border shadow-sm
                   {% if category == 'success' %} bg-emerald-50 text-emerald-800 border-emerald-200
@@ -239,8 +237,8 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
+            <!-- VIEW KAPAG NAKA-LOG OUT: SCANNER & LOGIN FORM -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <!-- VOLUNTEER LOGIN WITH QR SCANNER -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
                         <h2 class="text-base font-bold text-slate-900">Volunteer Login</h2>
@@ -248,9 +246,8 @@ MAIN_TEMPLATE = """
                             Use Credentials Instead
                         </button>
                     </div>
-                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para awtomatikong mag-login.</p>
+                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para mag-login.</p>
 
-                    <!-- 1. QR SCANNER VIEW (DEFAULT) -->
                     <div id="qr-login-section" class="space-y-3">
                         <div id="reader" class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 min-h-[220px]"></div>
                         <div id="scan-status" class="text-xs font-medium text-center text-slate-500">Initializing camera...</div>
@@ -267,7 +264,6 @@ MAIN_TEMPLATE = """
                         </form>
                     </div>
 
-                    <!-- 2. EMAIL & CONTACT FORM VIEW (FALLBACK) -->
                     <div id="form-login-section" class="hidden">
                         <form action="/login" method="POST" class="space-y-3">
                             <div>
@@ -283,17 +279,16 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- REGISTER NEW VOLUNTEER CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Register New Volunteer</h2>
-                    <p class="text-xs text-slate-500 mb-4">Para sa mga bago at wala pang authenticated pass.</p>
+                    <p class="text-xs text-slate-500 mb-4">Para sa mga bago at wala pang pass.</p>
                     <form action="/register" method="POST" class="space-y-3">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name (Max 50 chars)</label>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
                             <input type="text" name="name" maxlength="50" required placeholder="Juan Dela Cruz" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Email Address (@gmail.com only)</label>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Email (@gmail.com only)</label>
                             <input type="email" name="email" required placeholder="juandelacruz@gmail.com" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <div>
@@ -304,82 +299,158 @@ MAIN_TEMPLATE = """
                     </form>
                 </div>
             </div>
+        {% else %}
+            <!-- VIEW KAPAG NAKA-LOG IN NA: PUNCH ATTENDANCE & PASS DETAILS -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <h2 class="text-base font-bold text-slate-900 mb-1">Punch Attendance</h2>
+                    <p class="text-xs text-slate-500 mb-4">I-record ang Time In o Time Out para sa araw na ito.</p>
+                    
+                    <form action="/log-self-attendance" method="POST" class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
+                            <input type="text" name="agenda" placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
+                            <input type="text" name="task" placeholder="e.g. Volunteer Duty" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                        </div>
+                        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">
+                            Submit Attendance (Time In / Out)
+                        </button>
+                    </form>
+                </div>
 
-            <!-- JAVASCRIPT PARA SA KAMERA AT TOGGLE -->
-            <script>
-                let html5QrCode = null;
-                let isScannerActive = false;
-
-                function onScanSuccess(decodedText) {
-                    if (html5QrCode) {
-                        html5QrCode.stop().then(() => {
-                            document.getElementById('scan-status').innerHTML = "⏳ Logging in with QR pass...";
-                            fetch('/login-qr-api', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ qr_payload: decodedText })
-                            })
-                            .then(res => res.json())
-                            .then(data => {
-                                if (data.success) {
-                                    location.reload();
-                                } else {
-                                    alert(data.message);
-                                    location.reload();
-                                }
-                            })
-                            .catch(() => {
-                                alert("Scan error occurred.");
-                                location.reload();
-                            });
-                        }).catch(err => console.error(err));
-                    }
-                }
-
-                function startScanner() {
-                    html5QrCode = new Html5Qrcode("reader");
-                    const config = { fps: 10, qrbox: { width: 200, height: 200 }, aspectRatio: 1.0 };
-                    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                        .then(() => {
-                            isScannerActive = true;
-                            document.getElementById('scan-status').innerText = "📷 Camera active. Scan your QR.";
-                        })
-                        .catch(err => {
-                            document.getElementById('scan-status').innerHTML = 
-                                "<span class='text-rose-500 font-semibold'>⚠️ Allow camera permissions o mag-type ng code sa ibaba.</span>";
-                        });
-                }
-
-                function toggleLoginMode() {
-                    const qrSection = document.getElementById('qr-login-section');
-                    const formSection = document.getElementById('form-login-section');
-                    const btn = document.getElementById('toggle-btn');
-                    const desc = document.getElementById('login-desc');
-
-                    if (qrSection.classList.contains('hidden')) {
-                        qrSection.classList.remove('hidden');
-                        formSection.classList.add('hidden');
-                        btn.innerText = "Use Credentials Instead";
-                        desc.innerText = "Itapat ang iyong QR pass sa camera para awtomatikong mag-login.";
-                        startScanner();
-                    } else {
-                        if (html5QrCode && isScannerActive) {
-                            html5QrCode.stop().then(() => { isScannerActive = false; });
-                        }
-                        qrSection.classList.add('hidden');
-                        formSection.classList.remove('hidden');
-                        btn.innerText = "Use QR Scanner Instead";
-                        desc.innerText = "Naka-register ka na? Mag-login gamit ang iyong account.";
-                    }
-                }
-
-                // Simulan agad ang scanner sa pagbukas ng page
-                window.addEventListener("DOMContentLoaded", () => {
-                    startScanner();
-                });
-            </script>
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
+                    <span class="inline-block bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">Official Volunteer</span>
+                    <h3 class="text-lg font-bold">{{ user.name }}</h3>
+                    <p class="text-xs text-slate-400 mb-3">{{ user.email }}</p>
+                    <img src="/static/qrcodes/{{ user.qr_code }}" class="w-40 h-40 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
+                    <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.volunteer_code }}</div><br>
+                    <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg">Download Pass</a>
+                </div>
+            </div>
         {% endif %}
+
+        <!-- ATTENDANCE TABLE: LAGING NAKALABAS KAHIT NAKA-LOGIN O HINDI -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-4 border-b font-bold text-sm text-slate-800">Attendance Log</div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs sm:text-sm">
+                    <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                        <tr>
+                            <th class="py-3 px-4">Volunteer</th>
+                            <th class="py-3 px-4">Agenda</th>
+                            <th class="py-3 px-4">Task</th>
+                            <th class="py-3 px-4">Time In</th>
+                            <th class="py-3 px-4">Time Out</th>
+                            {% if user %}
+                            <th class="py-3 px-4 text-center">Action</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for log in logs %}
+                        <tr>
+                            <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
+                            <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                            <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                            <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                            <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                {{ log[4] if log[4] else 'Clocked In' }}
+                            </td>
+                            {% if user %}
+                            <td class="py-3 px-4 text-center">
+                                <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                    <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                        Delete
+                                    </button>
+                                </form>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
+
+    {% if not user %}
+    <script>
+        let html5QrCode = null;
+        let isScannerActive = false;
+
+        function onScanSuccess(decodedText) {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scan-status').innerHTML = "⏳ Logging in with QR pass...";
+                    fetch('/login-qr-api', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ qr_payload: decodedText })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            location.reload();
+                        } else {
+                            alert(data.message);
+                            location.reload();
+                        }
+                    })
+                    .catch(() => {
+                        alert("Scan error occurred.");
+                        location.reload();
+                    });
+                }).catch(err => console.error(err));
+            }
+        }
+
+        function startScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 200, height: 200 }, aspectRatio: 1.0 };
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => {
+                    isScannerActive = true;
+                    document.getElementById('scan-status').innerText = "📷 Camera active. Scan your QR.";
+                })
+                .catch(err => {
+                    document.getElementById('scan-status').innerHTML = 
+                        "<span class='text-rose-500 font-semibold'>⚠️ Allow camera permissions o mag-type ng code.</span>";
+                });
+        }
+
+        function toggleLoginMode() {
+            const qrSection = document.getElementById('qr-login-section');
+            const formSection = document.getElementById('form-login-section');
+            const btn = document.getElementById('toggle-btn');
+            const desc = document.getElementById('login-desc');
+
+            if (qrSection.classList.contains('hidden')) {
+                qrSection.classList.remove('hidden');
+                formSection.classList.add('hidden');
+                btn.innerText = "Use Credentials Instead";
+                desc.innerText = "Itapat ang iyong QR pass sa camera para mag-login.";
+                startScanner();
+            } else {
+                if (html5QrCode && isScannerActive) {
+                    html5QrCode.stop().then(() => { isScannerActive = false; });
+                }
+                qrSection.classList.add('hidden');
+                formSection.classList.remove('hidden');
+                btn.innerText = "Use QR Scanner Instead";
+                desc.innerText = "Naka-register ka na? Mag-login gamit ang iyong account.";
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            startScanner();
+        });
+    </script>
+    {% endif %}
 </body>
 </html>
 """
