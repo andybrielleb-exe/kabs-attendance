@@ -26,7 +26,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -149,9 +149,9 @@ def authenticate_user_by_qr(qr_data_str):
             v_id = data.get("id")
             token = data.get("token")
             cursor.execute(
-                "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = %s AND auth_token = %s"
+                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
                 if DATABASE_URL
-                else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = ? AND auth_token = ?",
+                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
                 (v_id, token),
             )
             user = cursor.fetchone()
@@ -160,9 +160,9 @@ def authenticate_user_by_qr(qr_data_str):
 
     if not user:
         cursor.execute(
-            "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
             if DATABASE_URL
-            else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
             (qr_data_str,),
         )
         user = cursor.fetchone()
@@ -170,6 +170,31 @@ def authenticate_user_by_qr(qr_data_str):
     cursor.close()
     conn.close()
     return user
+
+
+def get_fresh_user_profile(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = %s"
+        if DATABASE_URL
+        else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = ?",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row:
+        return {
+            "id": row[0],
+            "name": row[1],
+            "email": row[2],
+            "contact": row[3],
+            "qr_code": row[4],
+            "volunteer_code": row[5],
+            "profile_pic": row[6],
+        }
+    return None
 
 
 MAIN_TEMPLATE = """
@@ -195,7 +220,6 @@ MAIN_TEMPLATE = """
             </a>
             <div class="flex items-center space-x-2 sm:space-x-3">
                 {% if user %}
-                <!-- LINK PATUNGO SA PROFILE PAGE -->
                 <a href="/profile" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-3 py-1.5 rounded-lg text-slate-200 transition-all">
                     {% if user.get('profile_pic') %}
                         <img src="{{ user.get('profile_pic') }}" class="w-5 h-5 rounded-full object-cover">
@@ -228,7 +252,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW: WALANG MANUAL DITO SA LABAS -->
+            <!-- LOGGED OUT VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -294,7 +318,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS LAMANG ANG MAGKASAMA -->
+            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -348,7 +372,7 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
-                <!-- OFFICIAL PASS (QR CODE) CARD: INALIS ANG MANUAL BUTTON SA ILALIM -->
+                <!-- OFFICIAL QR CODE PASS -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
@@ -378,7 +402,7 @@ MAIN_TEMPLATE = """
                             Export to Excel
                         </a>
                     {% else %}
-                        <button type="button" disabled title="Kailangan munang magkaroon ng kahit isang attendance log bago makapag-export." class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
+                        <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                             </svg>
@@ -431,7 +455,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- BUONG KABS VOLUNTEER MANUAL (NASA LOOB AT NASA ILALIM LAMANG NG ATTENDANCE LOG) -->
+            <!-- BUONG KABS VOLUNTEER MANUAL (NASA ILALIM NG ATTENDANCE LOG) -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
                     <div>
@@ -443,17 +467,17 @@ MAIN_TEMPLATE = """
                 <div class="p-6 max-h-[600px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                        <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
+                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions.</p>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025.</p>
                         <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                            <li>Promote active youth participation in community development and local governance.</li>
+                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers.</li>
+                            <li>Provide structured deployment, recognition, and skill-building opportunities.</li>
                         </ul>
                     </section>
 
@@ -462,27 +486,27 @@ MAIN_TEMPLATE = """
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                                 <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change.</p>
                             </div>
                             <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                                 <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                                <p class="text-xs">Embodies communal unity and shared responsibility.</p>
                             </div>
                             <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
                                 <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives.</p>
                             </div>
                         </div>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics).</p>
                     </section>
 
                     <section class="space-y-2 pb-2">
                         <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala.</p>
                     </section>
                 </div>
             </div>
@@ -580,7 +604,7 @@ PROFILE_TEMPLATE = """
         <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
             <a href="/" class="flex items-center space-x-2 text-white hover:text-blue-300 transition-all">
                 <span>←</span>
-                <span class="font-bold text-sm">Bumalik sa Attendance Dashboard</span>
+                <span class="font-bold text-sm">Bumalik sa Dashboard</span>
             </a>
             <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</a>
         </div>
@@ -830,8 +854,14 @@ PROFILE_TEMPLATE = """
 
 @app.route("/")
 def index():
-    user = session.get("user")
+    session_user = session.get("user")
+    user = None
     active_record = None
+
+    if session_user:
+        user = get_fresh_user_profile(session_user["id"])
+        if not user:
+            session.pop("user", None)
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -841,7 +871,7 @@ def index():
             "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
             if DATABASE_URL
             else "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-            (user.get("id"),),
+            (user["id"],),
         )
         active_record = cursor.fetchone()
 
@@ -870,9 +900,14 @@ def index():
 
 @app.route("/profile")
 def profile():
-    user = session.get("user")
-    if not user:
+    session_user = session.get("user")
+    if not session_user:
         flash("Kailangan munang mag-login para makita ang iyong profile.", "danger")
+        return redirect(url_for("index"))
+
+    user = get_fresh_user_profile(session_user["id"])
+    if not user:
+        session.pop("user", None)
         return redirect(url_for("index"))
 
     return render_template_string(PROFILE_TEMPLATE, user=user)
@@ -880,8 +915,8 @@ def profile():
 
 @app.route("/edit-profile", methods=["POST"])
 def edit_profile():
-    user = session.get("user")
-    if not user:
+    session_user = session.get("user")
+    if not session_user:
         flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
         return redirect(url_for("index"))
 
@@ -902,14 +937,13 @@ def edit_profile():
         "UPDATE volunteers SET name = %s, contact = %s WHERE id = %s"
         if DATABASE_URL
         else "UPDATE volunteers SET name = ?, contact = ? WHERE id = ?",
-        (name, contact, user["id"]),
+        (name, contact, session_user["id"]),
     )
     conn.commit()
     cursor.close()
     conn.close()
 
     session["user"]["name"] = name
-    session["user"]["contact"] = contact
     session.modified = True
 
     flash("✅ Matagumpay na na-update ang iyong KABS Profile information!", "success")
@@ -918,8 +952,8 @@ def edit_profile():
 
 @app.route("/save-cropped-profile", methods=["POST"])
 def save_cropped_profile():
-    user = session.get("user")
-    if not user:
+    session_user = session.get("user")
+    if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
     data = request.json or {}
@@ -934,14 +968,12 @@ def save_cropped_profile():
             "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
             if DATABASE_URL
             else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
-            (image_data, user["id"]),
+            (image_data, session_user["id"]),
         )
         conn.commit()
         cursor.close()
         conn.close()
 
-        session["user"]["profile_pic"] = image_data
-        session.modified = True
         flash("✅ Matagumpay na na-crop at na-save ang iyong Profile Picture!", "success")
         return jsonify({"success": True})
     except Exception as e:
@@ -1024,14 +1056,12 @@ def login_qr_api():
     user = authenticate_user_by_qr(payload)
 
     if user:
+        # Tanging magaan na basic data lang ang nasa cookie para hindi lumampas sa 4KB limit
         session["user"] = {
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
-            "qr_code": user[4] if len(user) > 4 else None,
             "volunteer_code": user[5] if len(user) > 5 else "N/A",
-            "profile_pic": user[6] if len(user) > 6 else None,
         }
         flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
         return jsonify({"success": True})
@@ -1051,10 +1081,7 @@ def login_code():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
-            "qr_code": user[4] if len(user) > 4 else None,
             "volunteer_code": user[5] if len(user) > 5 else "N/A",
-            "profile_pic": user[6] if len(user) > 6 else None,
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
@@ -1086,9 +1113,9 @@ def login():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE email = %s AND contact = %s"
+        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
         if DATABASE_URL
-        else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE email = ? AND contact = ?",
+        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
         (email, contact),
     )
     user = cursor.fetchone()
@@ -1100,10 +1127,7 @@ def login():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
-            "qr_code": user[4] if len(user) > 4 else None,
-            "volunteer_code": user[5] if len(user) > 5 else "N/A",
-            "profile_pic": user[6] if len(user) > 6 else None,
+            "volunteer_code": user[5],
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
@@ -1117,8 +1141,8 @@ def login():
 
 @app.route("/log-self-attendance", methods=["POST"])
 def log_self_attendance():
-    user = session.get("user")
-    if not user:
+    session_user = session.get("user")
+    if not session_user:
         flash("Kailangan munang mag-login.", "danger")
         return redirect(url_for("index"))
 
@@ -1130,7 +1154,7 @@ def log_self_attendance():
         "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
         if DATABASE_URL
         else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (user.get("id"),),
+        (session_user["id"],),
     )
     active_record = cursor.fetchone()
 
@@ -1141,7 +1165,7 @@ def log_self_attendance():
             else "UPDATE attendance SET time_out = ? WHERE id = ?",
             (now, active_record[0]),
         )
-        flash(f"🔴 TIME OUT recorded for {user.get('name')} ({now})", "success")
+        flash(f"🔴 TIME OUT recorded for {session_user.get('name')} ({now})", "success")
     else:
         agenda = request.form.get("agenda", "").strip()
         task = request.form.get("task", "").strip()
@@ -1152,10 +1176,10 @@ def log_self_attendance():
             "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
             if DATABASE_URL
             else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
-            (user.get("id"), agenda_val, task_val, now),
+            (session_user["id"], agenda_val, task_val, now),
         )
         flash(
-            f"🟢 TIME IN recorded for {user.get('name')} | Agenda: {agenda_val} ({now})",
+            f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now})",
             "success",
         )
 
@@ -1256,10 +1280,7 @@ def register():
         "id": v_id,
         "name": name,
         "email": email,
-        "contact": contact,
         "volunteer_code": unique_volunteer_code,
-        "qr_code": qr_filename,
-        "profile_pic": None,
     }
     flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
