@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import json
@@ -18,6 +19,7 @@ from flask import (
     url_for,
 )
 import qrcode
+from werkzeug.utils import secure_filename
 
 try:
     import psycopg2
@@ -32,7 +34,18 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 QR_FOLDER = os.path.join("static", "qrcodes")
+PROFILE_FOLDER = os.path.join("static", "profiles")
 os.makedirs(QR_FOLDER, exist_ok=True)
+os.makedirs(PROFILE_FOLDER, exist_ok=True)
+
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+
+
+def allowed_file(filename):
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+    )
 
 
 def get_db_connection():
@@ -54,7 +67,8 @@ def init_db():
                 contact TEXT NOT NULL,
                 auth_token TEXT NOT NULL,
                 volunteer_code TEXT UNIQUE,
-                qr_code TEXT
+                qr_code TEXT,
+                profile_pic TEXT
             );
         """
         )
@@ -70,6 +84,10 @@ def init_db():
             );
         """
         )
+        try:
+            cursor.execute("ALTER TABLE volunteers ADD COLUMN profile_pic TEXT;")
+        except Exception:
+            conn.rollback()
         try:
             cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
         except Exception:
@@ -88,7 +106,8 @@ def init_db():
                 contact TEXT NOT NULL,
                 auth_token TEXT NOT NULL,
                 volunteer_code TEXT UNIQUE,
-                qr_code TEXT
+                qr_code TEXT,
+                profile_pic TEXT
             )
         """
         )
@@ -105,11 +124,16 @@ def init_db():
             )
         """
         )
+        cursor.execute("PRAGMA table_info(volunteers)")
+        v_cols = [c[1] for c in cursor.fetchall()]
+        if "profile_pic" not in v_cols:
+            cursor.execute("ALTER TABLE volunteers ADD COLUMN profile_pic TEXT;")
+
         cursor.execute("PRAGMA table_info(attendance)")
-        cols = [c[1] for c in cursor.fetchall()]
-        if "agenda" not in cols:
+        a_cols = [c[1] for c in cursor.fetchall()]
+        if "agenda" not in a_cols:
             cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
-        if "task" not in cols:
+        if "task" not in a_cols:
             cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
 
     conn.commit()
@@ -132,9 +156,9 @@ def authenticate_user_by_qr(qr_data_str):
             v_id = data.get("id")
             token = data.get("token")
             cursor.execute(
-                "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
+                "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = %s AND auth_token = %s"
                 if DATABASE_URL
-                else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
+                else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = ? AND auth_token = ?",
                 (v_id, token),
             )
             user = cursor.fetchone()
@@ -143,9 +167,9 @@ def authenticate_user_by_qr(qr_data_str):
 
     if not user:
         cursor.execute(
-            "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+            "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
             if DATABASE_URL
-            else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+            else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
             (qr_data_str,),
         )
         user = cursor.fetchone()
@@ -246,7 +270,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- REGISTRATION FORM WITH MANDATORY SCROLL-TO-END CHECK -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Register New Volunteer</h2>
                     <p class="text-xs text-slate-500 mb-4">Maging opisyal na KABS Youth Volunteer ng SK Payatas.</p>
@@ -264,7 +287,6 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <!-- STRICT MANUAL READING VERIFICATION -->
                         <div class="pt-2 border-t border-slate-100">
                             <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
                                 <div class="flex items-center justify-between">
@@ -289,13 +311,70 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    
+            <!-- LOGGED IN VIEW: PROFILE SECTION & ATTENDANCE ACTIONS -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                
+                <!-- KABS VOLUNTEER PROFILE CARD -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm md:col-span-1">
+                    <div class="flex items-center justify-between border-b pb-3 mb-4">
+                        <h2 class="text-base font-bold text-slate-900">KABS Profile</h2>
+                        <span class="inline-block bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase border border-blue-200">
+                            Official Volunteer
+                        </span>
+                    </div>
+
+                    <div class="text-center space-y-3">
+                        <div class="relative w-28 h-28 mx-auto">
+                            {% if user.profile_pic %}
+                                <img src="/static/profiles/{{ user.profile_pic }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
+                            {% else %}
+                                <div class="w-28 h-28 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-3xl mx-auto">
+                                    👤
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <h3 class="font-extrabold text-slate-900 text-base leading-tight">{{ user.name }}</h3>
+                            <p class="text-xs text-slate-500">{{ user.email }}</p>
+                        </div>
+
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-left space-y-1.5 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Contact No:</span>
+                                <span class="font-semibold text-slate-800">{{ user.contact }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Volunteer Code:</span>
+                                <span class="font-mono font-bold text-blue-600">{{ user.volunteer_code }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Classification:</span>
+                                <span class="font-semibold text-emerald-700">Auxiliary / Core Pool</span>
+                            </div>
+                        </div>
+
+                        <!-- PROFILE PHOTO CONTROLS -->
+                        <div class="pt-2 border-t border-slate-100 flex flex-col gap-2">
+                            <label class="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer text-center transition-all flex items-center justify-center gap-1.5">
+                                <span>📁</span> Choose Photo
+                                <form id="upload-photo-form" action="/update-profile-photo" method="POST" enctype="multipart/form-data" class="hidden">
+                                    <input type="file" name="photo" accept="image/*" onchange="document.getElementById('upload-photo-form').submit();">
+                                </form>
+                            </label>
+
+                            <button type="button" onclick="openSelfieModal()" class="w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-all flex items-center justify-center gap-1.5">
+                                <span>📸</span> Take a Selfie
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PUNCH ATTENDANCE CARD -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm md:col-span-1">
                     {% if active_record %}
                         <div class="flex items-center justify-between mb-2">
-                            <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
+                            <h2 class="text-base font-bold text-slate-900">Active Duty Session</h2>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
                                 ● Clocked In
                             </span>
@@ -322,7 +401,6 @@ MAIN_TEMPLATE = """
                                 <span>🔴</span> Punch Time Out
                             </button>
                         </form>
-
                     {% else %}
                         <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
                         <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
@@ -341,24 +419,24 @@ MAIN_TEMPLATE = """
                             </button>
                         </form>
                     {% endif %}
-
                 </div>
 
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
-                    <span class="inline-block bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">Official Volunteer</span>
-                    <h3 class="text-lg font-bold">{{ user.name }}</h3>
-                    <p class="text-xs text-slate-400 mb-3">{{ user.email }}</p>
-                    <img src="/static/qrcodes/{{ user.qr_code }}" class="w-40 h-40 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
+                <!-- QR PASS CARD -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center md:col-span-1">
+                    <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
+                        Official Pass
+                    </span>
+                    <img src="/static/qrcodes/{{ user.qr_code }}" class="w-36 h-36 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
                     <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.volunteer_code }}</div><br>
                     <div class="flex justify-center gap-2">
                         <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
-                        <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">📖 View Manual</button>
+                        <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">📖 Manual</button>
                     </div>
                 </div>
             </div>
         {% endif %}
 
-        <!-- ATTENDANCE TABLE WITH EXPORT BUTTON -->
+        <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                 <div>
@@ -434,10 +512,27 @@ MAIN_TEMPLATE = """
         </div>
     </main>
 
+    <!-- SELFIE CAMERA CAPTURE MODAL -->
+    <div id="selfie-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-slate-900 text-sm">📸 Take a Selfie</h3>
+                <button type="button" onclick="closeSelfieModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <div class="relative rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">
+                <video id="selfie-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                <canvas id="selfie-canvas" class="hidden"></canvas>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeSelfieModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
+                <button type="button" onclick="captureAndUploadSelfie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- BUONG KABS VOLUNTEER MANUAL MODAL (WITH SCROLL TO END ENFORCEMENT) -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
-            <!-- MODAL HEADER -->
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
                 <div>
                     <h3 class="text-base sm:text-lg font-extrabold tracking-wide">KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
@@ -446,10 +541,8 @@ MAIN_TEMPLATE = """
                 <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-white text-2xl font-bold p-1 leading-none">&times;</button>
             </div>
             
-            <!-- SCROLLABLE BODY NG BUONG MANUAL -->
             <div id="manual-content-scroll" onscroll="checkManualScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 
-                <!-- PROGRAM RATIONALE -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
                     <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
@@ -457,14 +550,12 @@ MAIN_TEMPLATE = """
                     <p>Evaluations of the Bayanihang Bayan Program revealed that agencies such as the Philippine National Volunteer Service Coordinating Agency (PNVSCA) and various local government units (LGUs) often lack the institutional capacity for consistent planning, documentation, and program follow-through. The Kabataan para sa Aksyon, Bayanihan, at Serbisyo (KABS) program seeks to bridge this gap by creating an organized platform for youth to actively participate in volunteerism, community development, and civic engagement.</p>
                 </section>
 
-                <!-- PROGRAM DESCRIPTION -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description</h4>
                     <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. The program was institutionalized as mandate of the Barangay Payatas Comprehensive Youth Code Ordinance, which upholds the rights of young people to participate in community development and nation-building through volunteerism, and the SK Payatas Resolution No. 012 S. 2024 entitled <i>"A Resolution Proclaiming The Selection and Appointment Process for SK Payatas Official Youth Volunteers for 2024-2025."</i></p>
                     <p>Moreover, the SK Payatas Resolution No. 42 S. 2025 entitled <i>"A Resolution Adopting the First Payatas Youth Parliament Resolution Strengthening the Youth Development and Empowerment on Grassroots Level Through Seminars and Youth Volunteering Activities,"</i> strengthens the KABS program by making it the main way to bring seminars, trainings, and community activities closer to the youth. The program mobilizes youth across various programs, projects, and activities (PPAs) organized by the Sangguniang Kabataan of Barangay Payatas.</p>
                 </section>
 
-                <!-- PROGRAM OBJECTIVES -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Objectives</h4>
                     <ul class="list-disc pl-5 space-y-1">
@@ -478,7 +569,6 @@ MAIN_TEMPLATE = """
                     </ul>
                 </section>
 
-                <!-- KABS 3 PILLARS -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -497,7 +587,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- KABS FRAMEWORK -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS Framework</h4>
                     <div class="space-y-2 text-xs">
@@ -509,7 +598,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- ROLES, CORE VS AUXILIARY, MANAGERS & SECRETARIAT -->
                 <section class="space-y-3 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Role and Responsibilities of Volunteers</h4>
                     <ul class="list-disc pl-5 space-y-1 text-xs">
@@ -548,7 +636,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- VOLUNTEER ASSIGNMENTS: 4 COMMITTEES -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -588,7 +675,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- DEPLOYMENT, COMMUNICATION & MONITORING TIMELINE -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Deployment Guidelines & Annual Cycle</h4>
                     <p class="text-xs">Sign-ups are conducted through Google Forms 1 week prior to events; final schedules are released 2 days prior. Attendance must be logged via electronic form.</p>
@@ -603,7 +689,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- PERKS AND BENEFITS -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS Perks and Benefits</h4>
                     <div class="overflow-x-auto">
@@ -629,7 +714,6 @@ MAIN_TEMPLATE = """
                     </div>
                 </section>
 
-                <!-- CODE OF CONDUCT -->
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
                     <ul class="list-disc pl-5 space-y-1 text-xs">
@@ -645,7 +729,6 @@ MAIN_TEMPLATE = """
                     </ul>
                 </section>
 
-                <!-- RIGHTS OF VOLUNTEERS & PROTECTION MECHANISM -->
                 <section class="space-y-2 pb-2">
                     <h4 class="font-extrabold text-slate-900 text-base">Rights of Volunteers and Protection Mechanism</h4>
                     <p class="text-xs">Volunteers are entitled to: Right to Respect and Fair Treatment, Safe Working Conditions, Information and Training, Support and Supervision, Recognition, Privacy and Confidentiality, Participation and Voice, and the Right to Withdraw respectfully.</p>
@@ -658,7 +741,6 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- MODAL FOOTER -->
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
                     ⬇️ Mag-scroll pababa para ma-unlock ang confirmation...
@@ -680,9 +762,7 @@ MAIN_TEMPLATE = """
             document.getElementById('manual-modal').classList.add('hidden');
         }
 
-        // Tinitingnan kung narating na ang ilalim ng scroll box
         function checkManualScroll(element) {
-            // Buffer ng 25px para sa iba't ibang screen resolutions
             if (element.scrollHeight - element.scrollTop <= element.clientHeight + 25) {
                 if (!hasReadToEnd) {
                     hasReadToEnd = true;
@@ -701,29 +781,79 @@ MAIN_TEMPLATE = """
 
         function acceptManualTerms() {
             if (!hasReadToEnd) return;
-            
-            // I-unlock at lagyan ng check ang checkbox sa labas
             const checkbox = document.getElementById('agree_terms');
             if (checkbox) {
                 checkbox.disabled = false;
                 checkbox.checked = true;
             }
-
             const label = document.getElementById('agree_label');
             if (label) {
                 label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual.";
                 label.classList.remove('text-slate-500');
                 label.classList.add('text-slate-800');
             }
-
             const submitBtn = document.getElementById('register_submit_btn');
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('bg-slate-400', 'cursor-not-allowed');
                 submitBtn.classList.add('bg-slate-900', 'hover:bg-slate-800', 'cursor-pointer');
             }
-
             closeManualModal();
+        }
+
+        // --- SELFIE CAMERA LOGIC ---
+        let selfieStream = null;
+
+        function openSelfieModal() {
+            const modal = document.getElementById('selfie-modal');
+            modal.classList.remove('hidden');
+            const video = document.getElementById('selfie-video');
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+                .then(stream => {
+                    selfieStream = stream;
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    alert("Hindi mabuksan ang camera. Pakisuri ang camera permissions sa browser.");
+                    closeSelfieModal();
+                });
+        }
+
+        function closeSelfieModal() {
+            const modal = document.getElementById('selfie-modal');
+            modal.classList.add('hidden');
+            if (selfieStream) {
+                selfieStream.getTracks().forEach(track => track.stop());
+                selfieStream = null;
+            }
+        }
+
+        function captureAndUploadSelfie() {
+            const video = document.getElementById('selfie-video');
+            const canvas = document.getElementById('selfie-canvas');
+            canvas.width = video.videoWidth || 400;
+            canvas.height = video.videoHeight || 400;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            
+            fetch('/save-selfie', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_data: dataUrl })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || "Failed to save selfie.");
+                }
+            })
+            .catch(() => alert("Error uploading selfie."))
+            .finally(() => closeSelfieModal());
         }
 
         {% if not user %}
@@ -832,15 +962,100 @@ def index():
     conn.close()
 
     if os.path.exists(os.path.join("templates", "index.html")):
-        return render_template("index.html", user=user, logs=logs, active_record=active_record)
+        return render_template(
+            "index.html", user=user, logs=logs, active_record=active_record
+        )
 
-    return render_template_string(MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record)
+    return render_template_string(
+        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record
+    )
+
+
+@app.route("/update-profile-photo", methods=["POST"])
+def update_profile_photo():
+    user = session.get("user")
+    if not user:
+        return redirect(url_for("index"))
+
+    file = request.files.get("photo")
+    if file and file.filename != "" and allowed_file(file.filename):
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        filename = f"profile_{user['id']}_{secrets.token_hex(4)}.{ext}"
+        filepath = os.path.join(PROFILE_FOLDER, filename)
+        file.save(filepath)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
+            if DATABASE_URL
+            else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
+            (filename, user["id"]),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        session["user"]["profile_pic"] = filename
+        session.modified = True
+        flash("✅ Matagumpay na na-update ang iyong Profile Picture!", "success")
+    else:
+        flash("❌ Invalid na imahe. Siguraduhing PNG, JPG, o JPEG.", "danger")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/save-selfie", methods=["POST"])
+def save_selfie():
+    user = session.get("user")
+    if not user:
+        return jsonify(
+            {"success": False, "message": "Kailangang naka-login muna."}
+        )
+
+    data = request.json or {}
+    image_data = data.get("image_data")
+    if not image_data or not image_data.startswith("data:image"):
+        return jsonify({"success": False, "message": "No selfie data received."})
+
+    try:
+        header, encoded = image_data.split(",", 1)
+        decoded = base64.b64decode(encoded)
+        filename = f"selfie_{user['id']}_{secrets.token_hex(4)}.jpg"
+        filepath = os.path.join(PROFILE_FOLDER, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(decoded)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
+            if DATABASE_URL
+            else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
+            (filename, user["id"]),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        session["user"]["profile_pic"] = filename
+        session.modified = True
+        flash(
+            "✅ Matagumpay na nai-save ang iyong selfie profile photo!", "success"
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 
 @app.route("/export-attendance")
 def export_attendance():
     if not session.get("user"):
-        flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
+        flash(
+            "Kailangan munang mag-login para makapag-export ng attendance.",
+            "danger",
+        )
         return redirect(url_for("index"))
 
     conn = get_db_connection()
@@ -859,7 +1074,10 @@ def export_attendance():
     conn.close()
 
     if not records or len(records) == 0:
-        flash("❌ Walang attendance records na maaring i-export sa ngayon.", "warning")
+        flash(
+            "❌ Walang attendance records na maaring i-export sa ngayon.",
+            "warning",
+        )
         return redirect(url_for("index"))
 
     output = io.StringIO()
@@ -873,7 +1091,7 @@ def export_attendance():
         "Agenda / Event",
         "Assigned Task",
         "Time In",
-        "Time Out"
+        "Time Out",
     ])
 
     for row in records:
@@ -885,16 +1103,18 @@ def export_attendance():
             row[4] if row[4] else "-",
             row[5] if row[5] else "-",
             row[6],
-            row[7] if row[7] else "Clocked In (Active)"
+            row[7] if row[7] else "Clocked In (Active)",
         ])
 
     csv_data = "\ufeff" + output.getvalue()
-    filename = f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = (
+        f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    )
 
     return Response(
         csv_data,
         mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -909,13 +1129,17 @@ def login_qr_api():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "qr_code": user[3],
-            "volunteer_code": user[4],
+            "contact": user[3],
+            "qr_code": user[4],
+            "volunteer_code": user[5],
+            "profile_pic": user[6],
         }
         flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
         return jsonify({"success": True})
 
-    return jsonify({"success": False, "message": "❌ Invalid o hindi kinikilalang QR Code."})
+    return jsonify(
+        {"success": False, "message": "❌ Invalid o hindi kinikilalang QR Code."}
+    )
 
 
 @app.route("/login-code", methods=["POST"])
@@ -928,8 +1152,10 @@ def login_code():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "qr_code": user[3],
-            "volunteer_code": user[4],
+            "contact": user[3],
+            "qr_code": user[4],
+            "volunteer_code": user[5],
+            "profile_pic": user[6],
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
@@ -947,16 +1173,23 @@ def login():
         flash("❌ Email must end with @gmail.com", "danger")
         return redirect(url_for("index"))
 
-    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
-        flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
+    if (
+        not contact.isdigit()
+        or len(contact) != 11
+        or not contact.startswith("09")
+    ):
+        flash(
+            "❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.",
+            "danger",
+        )
         return redirect(url_for("index"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
+        "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE email = %s AND contact = %s"
         if DATABASE_URL
-        else "SELECT id, name, email, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
+        else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE email = ? AND contact = ?",
         (email, contact),
     )
     user = cursor.fetchone()
@@ -968,12 +1201,17 @@ def login():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "qr_code": user[3],
-            "volunteer_code": user[4],
+            "contact": user[3],
+            "qr_code": user[4],
+            "volunteer_code": user[5],
+            "profile_pic": user[6],
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
-        flash("❌ Walang profile na tumugma sa email o contact number na nilagay.", "danger")
+        flash(
+            "❌ Walang profile na tumugma sa email o contact number na nilagay.",
+            "danger",
+        )
 
     return redirect(url_for("index"))
 
@@ -1017,7 +1255,10 @@ def log_self_attendance():
             else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
             (user["id"], agenda_val, task_val, now),
         )
-        flash(f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})", "success")
+        flash(
+            f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})",
+            "success",
+        )
 
     conn.commit()
     cursor.close()
@@ -1034,7 +1275,10 @@ def register():
     agree_terms = request.form.get("agree_terms")
 
     if not agree_terms:
-        flash("❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register.", "danger")
+        flash(
+            "❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register.",
+            "danger",
+        )
         return redirect(url_for("index"))
 
     if not email.endswith("@gmail.com") or len(email) <= 10:
@@ -1042,25 +1286,40 @@ def register():
         return redirect(url_for("index"))
 
     if len(name) > 50 or len(name) < 2:
-        flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
+        flash(
+            "❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.",
+            "danger",
+        )
         return redirect(url_for("index"))
 
-    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
-        flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
+    if (
+        not contact.isdigit()
+        or len(contact) != 11
+        or not contact.startswith("09")
+    ):
+        flash(
+            "❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.",
+            "danger",
+        )
         return redirect(url_for("index"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id, name FROM volunteers WHERE email = %s" if DATABASE_URL else "SELECT id, name FROM volunteers WHERE email = ?",
+        "SELECT id, name FROM volunteers WHERE email = %s"
+        if DATABASE_URL
+        else "SELECT id, name FROM volunteers WHERE email = ?",
         (email,),
     )
     existing_user = cursor.fetchone()
     if existing_user:
         cursor.close()
         conn.close()
-        flash(f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang gamit ang iyong QR o Contact Number.", "warning")
+        flash(
+            f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang gamit ang iyong QR o Contact Number.",
+            "warning",
+        )
         return redirect(url_for("index"))
 
     auth_token = secrets.token_hex(16)
@@ -1068,13 +1327,13 @@ def register():
 
     if DATABASE_URL:
         cursor.execute(
-            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic) VALUES (%s, %s, %s, %s, %s, NULL) RETURNING id",
             (name, email, contact, auth_token, unique_volunteer_code),
         )
         v_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic) VALUES (?, ?, ?, ?, ?, NULL)",
             (name, email, contact, auth_token, unique_volunteer_code),
         )
         v_id = cursor.lastrowid
@@ -1093,7 +1352,9 @@ def register():
     img.save(qr_path)
 
     cursor.execute(
-        "UPDATE volunteers SET qr_code = %s WHERE id = %s" if DATABASE_URL else "UPDATE volunteers SET qr_code = ? WHERE id = ?",
+        "UPDATE volunteers SET qr_code = %s WHERE id = %s"
+        if DATABASE_URL
+        else "UPDATE volunteers SET qr_code = ? WHERE id = ?",
         (qr_filename, v_id),
     )
     conn.commit()
@@ -1104,8 +1365,10 @@ def register():
         "id": v_id,
         "name": name,
         "email": email,
+        "contact": contact,
         "volunteer_code": unique_volunteer_code,
         "qr_code": qr_filename,
+        "profile_pic": None,
     }
     flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
@@ -1121,7 +1384,9 @@ def logout():
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
 def delete_log(log_id):
     if not session.get("user"):
-        flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
+        flash(
+            "Kailangan munang mag-login para makapagbura ng record.", "danger"
+        )
         return redirect(url_for("index"))
 
     conn = get_db_connection()
@@ -1138,7 +1403,10 @@ def delete_log(log_id):
     if not target:
         flash("Hindi natagpuan ang attendance record.", "danger")
     elif target[0] is None:
-        flash("❌ Bawal burahin ang attendance record habang naka-Clocked In pa! Mag-Time Out muna.", "warning")
+        flash(
+            "❌ Bawal burahin ang attendance record habang naka-Clocked In pa! Mag-Time Out muna.",
+            "warning",
+        )
     else:
         cursor.execute(
             "DELETE FROM attendance WHERE id = %s"
