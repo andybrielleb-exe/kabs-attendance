@@ -86,14 +86,19 @@ def init_db():
         )
         try:
             cursor.execute("ALTER TABLE volunteers ADD COLUMN profile_pic TEXT;")
+            conn.commit()
         except Exception:
             conn.rollback()
+
         try:
             cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
+            conn.commit()
         except Exception:
             conn.rollback()
+
         try:
             cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
+            conn.commit()
         except Exception:
             conn.rollback()
     else:
@@ -325,8 +330,8 @@ MAIN_TEMPLATE = """
 
                     <div class="text-center space-y-3">
                         <div class="relative w-28 h-28 mx-auto">
-                            {% if user.profile_pic %}
-                                <img src="/static/profiles/{{ user.profile_pic }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
+                            {% if user.get('profile_pic') %}
+                                <img src="/static/profiles/{{ user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
                             {% else %}
                                 <div class="w-28 h-28 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-3xl mx-auto">
                                     👤
@@ -335,18 +340,18 @@ MAIN_TEMPLATE = """
                         </div>
 
                         <div>
-                            <h3 class="font-extrabold text-slate-900 text-base leading-tight">{{ user.name }}</h3>
-                            <p class="text-xs text-slate-500">{{ user.email }}</p>
+                            <h3 class="font-extrabold text-slate-900 text-base leading-tight">{{ user.get('name', 'Volunteer') }}</h3>
+                            <p class="text-xs text-slate-500">{{ user.get('email', '') }}</p>
                         </div>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-left space-y-1.5 text-xs">
                             <div class="flex justify-between">
                                 <span class="text-slate-500">Contact No:</span>
-                                <span class="font-semibold text-slate-800">{{ user.contact }}</span>
+                                <span class="font-semibold text-slate-800">{{ user.get('contact', 'N/A') }}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-slate-500">Volunteer Code:</span>
-                                <span class="font-mono font-bold text-blue-600">{{ user.volunteer_code }}</span>
+                                <span class="font-mono font-bold text-blue-600">{{ user.get('volunteer_code', 'N/A') }}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-slate-500">Classification:</span>
@@ -354,7 +359,6 @@ MAIN_TEMPLATE = """
                             </div>
                         </div>
 
-                        <!-- PROFILE PHOTO CONTROLS -->
                         <div class="pt-2 border-t border-slate-100 flex flex-col gap-2">
                             <label class="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer text-center transition-all flex items-center justify-center gap-1.5">
                                 <span>📁</span> Choose Photo
@@ -426,10 +430,10 @@ MAIN_TEMPLATE = """
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
                     </span>
-                    <img src="/static/qrcodes/{{ user.qr_code }}" class="w-36 h-36 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
-                    <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.volunteer_code }}</div><br>
+                    <img src="/static/qrcodes/{{ user.get('qr_code') }}" class="w-36 h-36 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
+                    <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.get('volunteer_code') }}</div><br>
                     <div class="flex justify-center gap-2">
-                        <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
+                        <a href="/static/qrcodes/{{ user.get('qr_code') }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
                         <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">📖 Manual</button>
                     </div>
                 </div>
@@ -944,7 +948,7 @@ def index():
             "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
             if DATABASE_URL
             else "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-            (user["id"],),
+            (user.get("id"),),
         )
         active_record = cursor.fetchone()
 
@@ -1129,10 +1133,10 @@ def login_qr_api():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3],
-            "qr_code": user[4],
-            "volunteer_code": user[5],
-            "profile_pic": user[6],
+            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
+            "qr_code": user[4] if len(user) > 4 else None,
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            "profile_pic": user[6] if len(user) > 6 else None,
         }
         flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
         return jsonify({"success": True})
@@ -1152,10 +1156,10 @@ def login_code():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3],
-            "qr_code": user[4],
-            "volunteer_code": user[5],
-            "profile_pic": user[6],
+            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
+            "qr_code": user[4] if len(user) > 4 else None,
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            "profile_pic": user[6] if len(user) > 6 else None,
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
@@ -1201,10 +1205,10 @@ def login():
             "id": user[0],
             "name": user[1],
             "email": user[2],
-            "contact": user[3],
-            "qr_code": user[4],
-            "volunteer_code": user[5],
-            "profile_pic": user[6],
+            "contact": user[3] if len(user) > 3 and user[3] else "N/A",
+            "qr_code": user[4] if len(user) > 4 else None,
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            "profile_pic": user[6] if len(user) > 6 else None,
         }
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
@@ -1231,7 +1235,7 @@ def log_self_attendance():
         "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
         if DATABASE_URL
         else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (user["id"],),
+        (user.get("id"),),
     )
     active_record = cursor.fetchone()
 
@@ -1242,7 +1246,7 @@ def log_self_attendance():
             else "UPDATE attendance SET time_out = ? WHERE id = ?",
             (now, active_record[0]),
         )
-        flash(f"🔴 TIME OUT recorded for {user['name']} ({now})", "success")
+        flash(f"🔴 TIME OUT recorded for {user.get('name')} ({now})", "success")
     else:
         agenda = request.form.get("agenda", "").strip()
         task = request.form.get("task", "").strip()
@@ -1253,10 +1257,10 @@ def log_self_attendance():
             "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
             if DATABASE_URL
             else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
-            (user["id"], agenda_val, task_val, now),
+            (user.get("id"), agenda_val, task_val, now),
         )
         flash(
-            f"🟢 TIME IN recorded for {user['name']} | Agenda: {agenda_val} ({now})",
+            f"🟢 TIME IN recorded for {user.get('name')} | Agenda: {agenda_val} ({now})",
             "success",
         )
 
