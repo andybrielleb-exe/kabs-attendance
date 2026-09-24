@@ -235,7 +235,7 @@ MAIN_TEMPLATE = """
                                 <input type="email" name="email" placeholder="juandelacruz@gmail.com" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (Numbers only, 11 digits)</label>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits, numbers only)</label>
                                 <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                             </div>
                             <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Access Portal & Pass</button>
@@ -256,7 +256,7 @@ MAIN_TEMPLATE = """
                             <input type="email" name="email" required placeholder="juandelacruz@gmail.com" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (Numbers only, 11 digits)</label>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits, numbers only)</label>
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
@@ -269,13 +269,14 @@ MAIN_TEMPLATE = """
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     
                     {% if active_record %}
+                        <!-- TIME OUT CARD -->
                         <div class="flex items-center justify-between mb-2">
                             <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
                                 ● Clocked In
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-duty. Pindutin lamang ang button para makapag-Time Out.</p>
+                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-duty. Pindutin lamang ang button para mag-Time Out.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
                             <div class="flex justify-between">
@@ -299,6 +300,7 @@ MAIN_TEMPLATE = """
                         </form>
 
                     {% else %}
+                        <!-- TIME IN CARD -->
                         <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
                         <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
                         
@@ -330,7 +332,7 @@ MAIN_TEMPLATE = """
             </div>
         {% endif %}
 
-        <!-- ATTENDANCE TABLE WITH EXPORT BUTTON -->
+        <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                 <div>
@@ -339,12 +341,23 @@ MAIN_TEMPLATE = """
                 </div>
                 
                 {% if user %}
-                <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Export to Excel
-                </a>
+                    {% if logs and logs|length > 0 %}
+                        <!-- ENABLED KUNG MAY RECORDS NA -->
+                        <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel
+                        </a>
+                    {% else %}
+                        <!-- DISABLED KUNG WALA PANG RECORDS -->
+                        <button type="button" disabled title="Kailangan munang magkaroon ng kahit isang attendance log bago makapag-export." class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel (No Logs)
+                        </button>
+                    {% endif %}
                 {% endif %}
             </div>
 
@@ -381,7 +394,7 @@ MAIN_TEMPLATE = """
                                         </button>
                                     </form>
                                 {% else %}
-                                    <button type="button" disabled title="Kailangan munang mag-Time Out bago mabura ang record na ito." class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                    <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
                                         Clocked In
                                     </button>
                                 {% endif %}
@@ -400,7 +413,6 @@ MAIN_TEMPLATE = """
     {% if not user %}
     <script>
         let html5QrCode = null;
-        let isScannerActive = false;
 
         function onScanSuccess(decodedText) {
             if (html5QrCode) {
@@ -433,7 +445,6 @@ MAIN_TEMPLATE = """
             const config = { fps: 10, qrbox: { width: 200, height: 200 }, aspectRatio: 1.0 };
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
                 .then(() => {
-                    isScannerActive = true;
                     document.getElementById('scan-status').innerText = "📷 Camera active. Scan your QR.";
                 })
                 .catch(err => {
@@ -455,8 +466,8 @@ MAIN_TEMPLATE = """
                 desc.innerText = "Itapat ang iyong QR pass sa camera para mag-login.";
                 startScanner();
             } else {
-                if (html5QrCode && isScannerActive) {
-                    html5QrCode.stop().then(() => { isScannerActive = false; });
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().catch(() => {});
                 }
                 qrSection.classList.add('hidden');
                 formSection.classList.remove('hidden');
@@ -531,6 +542,11 @@ def export_attendance():
     records = cursor.fetchall()
     cursor.close()
     conn.close()
+
+    # Pagsusuri: Kung walang laman ang records, huwag mag-download ng file
+    if not records or len(records) == 0:
+        flash("❌ Walang attendance records na maaring i-export sa ngayon.", "warning")
+        return redirect(url_for("index"))
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -617,7 +633,6 @@ def login():
         flash("❌ Email must end with @gmail.com", "danger")
         return redirect(url_for("index"))
 
-    # Backend Validation: Mga numero lang at dapat 11 digits
     if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
         flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
         return redirect(url_for("index"))
@@ -711,7 +726,6 @@ def register():
         flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
         return redirect(url_for("index"))
 
-    # Backend Validation: Mga numero lang at dapat 11 digits
     if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
         flash("❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.", "danger")
         return redirect(url_for("index"))
