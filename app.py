@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import secrets
@@ -5,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from flask import (
     Flask,
+    Response,
     flash,
     jsonify,
     redirect,
@@ -329,9 +332,25 @@ MAIN_TEMPLATE = """
             </div>
         {% endif %}
 
-        <!-- ATTENDANCE TABLE WITH PROTECTED DELETE BUTTON -->
+        <!-- ATTENDANCE TABLE WITH EXPORT BUTTON -->
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-            <div class="p-4 border-b font-bold text-sm text-slate-800">Attendance Log</div>
+            <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
+                <div>
+                    <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                    <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok at lumabas.</p>
+                </div>
+                
+                <!-- EXPORT TO EXCEL BUTTON -->
+                {% if user %}
+                <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Export to Excel
+                </a>
+                {% endif %}
+            </div>
+
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs sm:text-sm">
                     <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
@@ -359,14 +378,12 @@ MAIN_TEMPLATE = """
                             {% if user %}
                             <td class="py-3 px-4 text-center">
                                 {% if log[4] %}
-                                    <!-- NAKA-TIME OUT NA: PWEDENG BURAHIN -->
                                     <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
                                         <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
                                             Delete
                                         </button>
                                     </form>
                                 {% else %}
-                                    <!-- CLOCKED IN PA: BAWAL BURAHIN -->
                                     <button type="button" disabled title="Kailangan munang mag-Time Out bago mabura ang record na ito." class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
                                         Clocked In
                                     </button>
@@ -484,7 +501,7 @@ def index():
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
         ORDER BY attendance.id DESC
-        LIMIT 50
+        LIMIT 100
     """
     )
     logs = cursor.fetchall()
@@ -495,6 +512,65 @@ def index():
         return render_template("index.html", user=user, logs=logs, active_record=active_record)
 
     return render_template_string(MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record)
+
+
+@app.route("/export-attendance")
+def export_attendance():
+    if not session.get("user"):
+        flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT volunteers.volunteer_code, volunteers.name, volunteers.email, volunteers.contact,
+               attendance.agenda, attendance.task, attendance.time_in, attendance.time_out
+        FROM attendance
+        JOIN volunteers ON attendance.volunteer_id = volunteers.id
+        ORDER BY attendance.id DESC
+    """
+    )
+    records = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Gumawa ng in-memory CSV file na may UTF-8 BOM para mabuksan agad nang tama sa Excel
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header Row
+    writer.writerow([
+        "Volunteer Code",
+        "Volunteer Name",
+        "Email Address",
+        "Contact Number",
+        "Agenda / Event",
+        "Assigned Task",
+        "Time In",
+        "Time Out"
+    ])
+
+    for row in records:
+        writer.writerow([
+            row[0],
+            row[1],
+            row[2],
+            f"'{row[3]}'", # May single quote para hindi mawala ang leading 0 ng phone number sa Excel
+            row[4] if row[4] else "-",
+            row[5] if row[5] else "-",
+            row[6],
+            row[7] if row[7] else "Clocked In (Active)"
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.route("/login-qr-api", methods=["POST"])
@@ -717,7 +793,6 @@ def delete_log(log_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Suriin muna kung may time_out na ang buburahin
     cursor.execute(
         "SELECT time_out FROM attendance WHERE id = %s"
         if DATABASE_URL
