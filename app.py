@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime
@@ -137,18 +138,26 @@ def init_db():
 init_db()
 
 
-def authenticate_user_by_qr(qr_data_str):
-    if not qr_data_str:
+def authenticate_user_by_qr(raw_qr_input):
+    if not raw_qr_input:
         return None
 
-    qr_data_str = qr_data_str.strip()
+    cleaned_str = str(raw_qr_input).strip()
+    # Linisin ang posibleng quotes sa simula o dulo
+    if (cleaned_str.startswith('"') and cleaned_str.endswith('"')) or (
+        cleaned_str.startswith("'") and cleaned_str.endswith("'")
+    ):
+        cleaned_str = cleaned_str[1:-1].strip()
+
     conn = get_db_connection()
     cursor = conn.cursor()
     user = None
 
-    # 1. Subukang i-parse bilang JSON
+    # Step 1: Subukang kunin gamit ang JSON format
     try:
-        data = json.loads(qr_data_str)
+        # Pagsasaayos kung may single quotes sa halip na double quotes
+        fixed_json_str = cleaned_str.replace("'", '"')
+        data = json.loads(fixed_json_str)
         if isinstance(data, dict):
             v_id = data.get("id")
             token = data.get("token")
@@ -168,29 +177,42 @@ def authenticate_user_by_qr(qr_data_str):
                     "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
                     if DATABASE_URL
                     else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-                    (v_code.strip(),),
+                    (str(v_code).strip(),),
                 )
                 user = cursor.fetchone()
     except Exception:
         pass
 
-    # 2. Subukan gamit ang plain Volunteer Code (halimbawa: KABS-7F2D)
+    # Step 2: Regex extraction para sa Volunteer Code pattern (hal. KABS-4F2A o KABS-7F2D)
+    if not user:
+        code_match = re.search(r"KABS-[A-Za-z0-9]+", cleaned_str, re.IGNORECASE)
+        if code_match:
+            found_code = code_match.group(0).upper()
+            cursor.execute(
+                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
+                if DATABASE_URL
+                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
+                (found_code,),
+            )
+            user = cursor.fetchone()
+
+    # Step 3: Direct match sa Volunteer Code
     if not user:
         cursor.execute(
             "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
             if DATABASE_URL
             else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-            (qr_data_str.upper(),),
+            (cleaned_str.upper(),),
         )
         user = cursor.fetchone()
 
-    # 3. Subukan gamit ang Token string
+    # Step 4: Direct match sa Auth Token
     if not user:
         cursor.execute(
             "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
             if DATABASE_URL
             else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = ?",
-            (qr_data_str,),
+            (cleaned_str,),
         )
         user = cursor.fetchone()
 
@@ -561,7 +583,7 @@ MAIN_TEMPLATE = """
         {% endif %}
     </main>
 
-    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION CHECKBOX -->
+    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
@@ -697,7 +719,7 @@ MAIN_TEMPLATE = """
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            window.location.href = "/";
+                            window.location.replace('/');
                         } else {
                             alert(data.message || "Invalid QR pass.");
                             location.reload();
