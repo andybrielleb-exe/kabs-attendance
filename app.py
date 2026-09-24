@@ -172,15 +172,18 @@ MAIN_TEMPLATE = """
                 <img src="/static/images/logo.jpg" alt="KABS Logo" class="w-11 h-11 rounded-lg object-cover bg-white p-0.5 border border-slate-700 shadow-sm" onerror="this.src='/static/images/logo.png';">
                 <div>
                     <h1 class="font-extrabold text-white text-base sm:text-lg leading-tight">KABS ATTENDANCE PORTAL</h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo</p>
+                    <p class="text-xs text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo | SK Payatas</p>
                 </div>
             </div>
-            {% if user %}
-            <div class="flex items-center space-x-3">
-                <span class="text-xs text-slate-300">Welcome, <b class="text-white">{{ user.name }}</b></span>
+            <div class="flex items-center space-x-2">
+                <button type="button" onclick="openManualModal()" class="text-xs text-slate-300 hover:text-white bg-slate-800 border border-slate-700 hover:bg-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all">
+                    <span>📘</span> <span class="hidden sm:inline">KABS</span> Manual
+                </button>
+                {% if user %}
+                <span class="text-xs text-slate-300 hidden md:inline">| Welcome, <b class="text-white">{{ user.name }}</b></span>
                 <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">Log Out</a>
+                {% endif %}
             </div>
-            {% endif %}
         </div>
     </header>
 
@@ -243,9 +246,10 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
 
+                <!-- REGISTRATION FORM WITH MANUAL CHECKBOX -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-base font-bold text-slate-900 mb-1">Register New Volunteer</h2>
-                    <p class="text-xs text-slate-500 mb-4">Para sa mga bago at wala pang pass.</p>
+                    <p class="text-xs text-slate-500 mb-4">Para sa mga bagong volunteers ng SK Payatas.</p>
                     <form action="/register" method="POST" class="space-y-3">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
@@ -259,7 +263,23 @@ MAIN_TEMPLATE = """
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits, numbers only)</label>
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
-                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
+
+                        <!-- MANDATORY TERMS & MANUAL CHECKBOX -->
+                        <div class="pt-2 border-t border-slate-100">
+                            <div class="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <input type="checkbox" id="agree_terms" name="agree_terms" required class="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer">
+                                <label for="agree_terms" class="text-xs text-slate-600 leading-snug cursor-pointer select-none">
+                                    Nabasang mabuti at sumasang-ayon ako sa mga alituntunin ng 
+                                    <button type="button" onclick="openManualModal()" class="text-blue-600 font-bold underline hover:text-blue-800">
+                                        KABS Volunteer Manual & Code of Conduct
+                                    </button>.
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">
+                            Register & Generate Pass
+                        </button>
                     </form>
                 </div>
             </div>
@@ -269,7 +289,6 @@ MAIN_TEMPLATE = """
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     
                     {% if active_record %}
-                        <!-- TIME OUT CARD -->
                         <div class="flex items-center justify-between mb-2">
                             <h2 class="text-base font-bold text-slate-900">Current Session Active</h2>
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
@@ -300,7 +319,6 @@ MAIN_TEMPLATE = """
                         </form>
 
                     {% else %}
-                        <!-- TIME IN CARD -->
                         <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
                         <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
                         
@@ -327,7 +345,10 @@ MAIN_TEMPLATE = """
                     <p class="text-xs text-slate-400 mb-3">{{ user.email }}</p>
                     <img src="/static/qrcodes/{{ user.qr_code }}" class="w-40 h-40 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
                     <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.volunteer_code }}</div><br>
-                    <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg">Download Pass</a>
+                    <div class="flex justify-center gap-2">
+                        <a href="/static/qrcodes/{{ user.qr_code }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
+                        <button type="button" onclick="openManualModal()" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">Read Manual</button>
+                    </div>
                 </div>
             </div>
         {% endif %}
@@ -342,7 +363,6 @@ MAIN_TEMPLATE = """
                 
                 {% if user %}
                     {% if logs and logs|length > 0 %}
-                        <!-- ENABLED KUNG MAY RECORDS NA -->
                         <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -350,7 +370,6 @@ MAIN_TEMPLATE = """
                             Export to Excel
                         </a>
                     {% else %}
-                        <!-- DISABLED KUNG WALA PANG RECORDS -->
                         <button type="button" disabled title="Kailangan munang magkaroon ng kahit isang attendance log bago makapag-export." class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -410,8 +429,80 @@ MAIN_TEMPLATE = """
         </div>
     </main>
 
-    {% if not user %}
+    <!-- KABS VOLUNTEER MANUAL MODAL POPUP -->
+    <div id="manual-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200">
+            <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">KABS Youth Volunteers Program Manual</h3>
+                    <p class="text-xs text-slate-500">Kabataan para sa Aksyon, Bayanihan, at Serbisyo | SK Payatas</p>
+                </div>
+                <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-5 text-xs text-slate-700 leading-relaxed">
+                <div>
+                    <h4 class="font-bold text-slate-900 text-sm mb-1">1. Ang 3 Haligi (3 Pillars of KABS)</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><b>Action (Aksyon):</b> Enerhiya at inisyatiba ng kabataan para sa positibong pagbabago at aktibong pakikilahok sa komunidad.</li>
+                        <li><b>Bayanihan:</b> Diwa ng pagkakaisa, pagtutulungan, at pantay na kontribusyon para sa kapakanan ng lahat.</li>
+                        <li><b>Service (Serbisyo):</b> Puso ng KABS; tapat at bukal sa loob na paglilingkod para sa kapwa at barangay nang may pananagutan.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-slate-900 text-sm mb-1">2. Tungkulin ng mga Volunteers (Roles & Responsibilities)</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><b>Be Committed:</b> Magpakita ng dedikasyon sa mga nakatalagang tungkulin at programa.</li>
+                        <li><b>Follow Instructions:</b> Sumunod sa mga alituntunin at gabay ng coordinators at team leaders.</li>
+                        <li><b>Maintain Professional Conduct:</b> Maging magalang sa kapwa volunteers, opisyal ng SK, at mga mamamayan.</li>
+                        <li><b>Respect Confidentiality:</b> Pangalagaan ang pribadong impormasyon ng programa at komunidad.</li>
+                        <li><b>Be Willing to Learn:</b> Maging bukas sa pagsasanay, mentoring, at pag-unlad ng kasanayan.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-slate-900 text-sm mb-1">3. Code of Conduct (Pamantayan sa Pagkilos)</h4>
+                    <p class="mb-2">Inaasahan ang bawat volunteer na itaguyod ang integridad ng SK Payatas at KABS Program:</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Pumasok sa oras at tuparin ang mga gawaing tinanggap.</li>
+                        <li>Bawal ang diskriminasyon, panliligalig, o anumang marahas na kilos sa kapwa.</li>
+                        <li>Magsuot ng angkop at desenteng kasuotan o opisyal na uniporme habang naka-duty.</li>
+                        <li>Igalang ang mga opisyal at gamit ng Sangguniang Kabataan.</li>
+                        <li>mahigpit na <b>ipinagbabawal ang paggamit o pagiging nasa impluwensya ng alak o ipinagbabawal na gamot</b> habang nagboboluntaryo.</li>
+                        <li>Ang anumang pandaraya o pamemeke sa talaan ng attendance ay magdudulot ng agarang pagkatanggal sa programa.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-slate-900 text-sm mb-1">4. Karapatan ng mga Volunteers (Rights of Volunteers)</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Karapatang tratuhin nang may paggalang, patas, at walang diskriminasyon.</li>
+                        <li>Karapatan sa ligtas at maayos na kapaligiran habang naglilingkod.</li>
+                        <li>Karapatan sa maayos na oryentasyon, kagamitan, at suporta sa mga aktibidad.</li>
+                        <li>Karapatang kilalanin ang serbisyo sa pamamagitan ng Certificates at Service Records.</li>
+                        <li>Karapatan sa proteksyon ng personal na data alinsunod sa Data Privacy Act.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-2xl">
+                <button type="button" onclick="closeManualModal()" class="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow transition-all">
+                    Naiintindihan Ko
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function openManualModal() {
+            document.getElementById('manual-modal').classList.remove('hidden');
+        }
+        function closeManualModal() {
+            document.getElementById('manual-modal').classList.add('hidden');
+        }
+
+        {% if not user %}
         let html5QrCode = null;
 
         function onScanSuccess(decodedText) {
@@ -479,8 +570,8 @@ MAIN_TEMPLATE = """
         window.addEventListener("DOMContentLoaded", () => {
             startScanner();
         });
+        {% endif %}
     </script>
-    {% endif %}
 </body>
 </html>
 """
@@ -543,7 +634,6 @@ def export_attendance():
     cursor.close()
     conn.close()
 
-    # Pagsusuri: Kung walang laman ang records, huwag mag-download ng file
     if not records or len(records) == 0:
         flash("❌ Walang attendance records na maaring i-export sa ngayon.", "warning")
         return redirect(url_for("index"))
@@ -717,6 +807,12 @@ def register():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
     contact = request.form.get("contact", "").strip()
+    agree_terms = request.form.get("agree_terms")
+
+    # Pagsusuri kung binuksan at minarkahan ang checkbox ng Manual
+    if not agree_terms:
+        flash("❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register.", "danger")
+        return redirect(url_for("index"))
 
     if not email.endswith("@gmail.com") or len(email) <= 10:
         flash("❌ Valid @gmail.com address lamang ang tinatanggap!", "danger")
