@@ -261,6 +261,76 @@ MAIN_TEMPLATE = """
                         <form action="/login-code" method="POST" class="flex space-x-2">
                             <input type="text" name="volunteer_code" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                             <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Enter</button>
+                        </form>MAIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KABS Attendance Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <img src="/static/images/logo.jpg" alt="KABS Logo" class="w-11 h-11 rounded-lg object-cover bg-white p-0.5 border border-slate-700 shadow-sm" onerror="this.src='/static/images/logo.png';">
+                <div>
+                    <h1 class="font-extrabold text-white text-base sm:text-lg leading-tight">KABS ATTENDANCE PORTAL</h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo</p>
+                </div>
+            </div>
+            {% if user %}
+            <div class="flex items-center space-x-3">
+                <span class="text-xs text-slate-300">Welcome, <b class="text-white">{{ user.name }}</b></span>
+                <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">Log Out</a>
+            </div>
+            {% endif %}
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 pt-6 space-y-6">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="space-y-2">
+            {% for category, message in messages %}
+              <div class="rounded-xl p-4 text-sm font-medium border shadow-sm
+                  {% if category == 'success' %} bg-emerald-50 text-emerald-800 border-emerald-200
+                  {% elif category == 'danger' %} bg-rose-50 text-rose-800 border-rose-200
+                  {% else %} bg-amber-50 text-amber-800 border-amber-200 {% endif %}">
+                  {{ message | safe }}
+              </div>
+            {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% if not user %}
+            <!-- VIEW KAPAG NAKA-LOG OUT: SCANNER & LOGIN FORM -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <div class="flex items-center justify-between mb-1">
+                        <h2 class="text-base font-bold text-slate-900">Volunteer Login</h2>
+                        <button type="button" onclick="toggleLoginMode()" id="toggle-btn" class="text-xs text-blue-600 hover:text-blue-800 font-semibold underline">
+                            Use Credentials Instead
+                        </button>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-4" id="login-desc">Itapat ang iyong QR pass sa camera para mag-login.</p>
+
+                    <div id="qr-login-section" class="space-y-3">
+                        <div id="reader" class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 min-h-[220px]"></div>
+                        <div id="scan-status" class="text-xs font-medium text-center text-slate-500">Initializing camera...</div>
+                        
+                        <div class="relative flex py-2 items-center">
+                            <div class="flex-grow border-t border-slate-200"></div>
+                            <span class="flex-shrink mx-2 text-xs text-slate-400">o i-type ang code</span>
+                            <div class="flex-grow border-t border-slate-200"></div>
+                        </div>
+
+                        <form action="/login-code" method="POST" class="flex space-x-2">
+                            <input type="text" name="volunteer_code" placeholder="E.G. KABS-4F2A" required class="uppercase text-sm w-full py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 rounded-lg">Enter</button>
                         </form>
                     </div>
 
@@ -293,7 +363,7 @@ MAIN_TEMPLATE = """
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits)</label>
-                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <input type="tel" name="contact" maxlength="11" minlength="11" pattern="[0-9]{11}" placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
                         <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all">Register & Generate Pass</button>
                     </form>
@@ -454,7 +524,6 @@ MAIN_TEMPLATE = """
 </body>
 </html>
 """
-
 
 @app.route("/")
 def index():
