@@ -228,7 +228,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW -->
+            <!-- LOGGED OUT VIEW: WALANG MANUAL DITO SA LABAS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -287,24 +287,7 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <div class="pt-2 border-t border-slate-100">
-                            <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold text-amber-900">Mandatory Manual Verification</span>
-                                    <a href="#manual-section" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded-lg shadow-sm transition-all">
-                                        Basahin sa Ibaba ⬇
-                                    </a>
-                                </div>
-                                <div class="flex items-start gap-2 pt-1">
-                                    <input type="checkbox" id="agree_terms" name="agree_terms" required disabled class="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 cursor-not-allowed">
-                                    <label for="agree_terms" id="agree_label" class="text-[11px] text-slate-500 leading-snug select-none">
-                                        🔒 <i>I-scroll ang KABS Manual sa ibaba hanggang dulo bago ma-unlock ang checkbox na ito.</i>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <button type="submit" id="register_submit_btn" disabled class="w-full py-2.5 bg-slate-400 text-white font-semibold text-sm rounded-lg shadow-sm cursor-not-allowed transition-all">
+                        <button type="submit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition-all mt-2">
                             Register & Generate Pass
                         </button>
                     </form>
@@ -365,31 +348,28 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
-                <!-- OFFICIAL PASS (QR CODE) CARD -->
+                <!-- OFFICIAL PASS (QR CODE) CARD: INALIS ANG MANUAL BUTTON SA ILALIM -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
                     </span>
                     <img src="/static/qrcodes/{{ user.get('qr_code') }}" class="w-36 h-36 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
                     <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.get('volunteer_code') }}</div><br>
-                    <div class="flex justify-center gap-2">
-                        <a href="/static/qrcodes/{{ user.get('qr_code') }}" download class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
-                        <a href="#manual-section" class="inline-block py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300">📖 Manual</a>
+                    <div class="flex justify-center">
+                        <a href="/static/qrcodes/{{ user.get('qr_code') }}" download class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
                     </div>
                 </div>
 
             </div>
-        {% endif %}
 
-        <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
-        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-            <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
-                <div>
-                    <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                    <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok at lumabas.</p>
-                </div>
-                
-                {% if user %}
+            <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok at lumabas.</p>
+                    </div>
+                    
                     {% if logs and logs|length > 0 %}
                         <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -405,146 +385,111 @@ MAIN_TEMPLATE = """
                             Export to Excel (No Logs)
                         </button>
                     {% endif %}
-                {% endif %}
-            </div>
+                </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs sm:text-sm">
-                    <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                        <tr>
-                            <th class="py-3 px-4">Volunteer</th>
-                            <th class="py-3 px-4">Agenda</th>
-                            <th class="py-3 px-4">Task</th>
-                            <th class="py-3 px-4">Time In</th>
-                            <th class="py-3 px-4">Time Out</th>
-                            {% if user %}
-                            <th class="py-3 px-4 text-center">Action</th>
-                            {% endif %}
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for log in logs %}
-                        <tr>
-                            <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
-                            <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                            <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                            <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                            <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                {{ log[4] if log[4] else 'Clocked In' }}
-                            </td>
-                            {% if user %}
-                            <td class="py-3 px-4 text-center">
-                                {% if log[4] %}
-                                    <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                        <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                            Delete
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="py-3 px-4">Volunteer</th>
+                                <th class="py-3 px-4">Agenda</th>
+                                <th class="py-3 px-4">Task</th>
+                                <th class="py-3 px-4">Time In</th>
+                                <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for log in logs %}
+                            <tr>
+                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
+                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                    {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[4] %}
+                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                                Delete
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                            Clocked In
                                         </button>
-                                    </form>
-                                {% else %}
-                                    <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
-                                        Clocked In
-                                    </button>
-                                {% endif %}
-                            </td>
-                            {% endif %}
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- BUONG KABS VOLUNTEER MANUAL (NASA ILALIM NG ATTENDANCE LOG) -->
-        <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-            <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
-                <div>
-                    <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                    <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div id="manual-content-scroll" onscroll="checkManualScroll(this)" class="p-6 max-h-[600px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
-                </section>
-
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
-                    </ul>
-                </section>
-
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
-                        </div>
-                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
-                        </div>
-                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
-                        </div>
+            <!-- BUONG KABS VOLUNTEER MANUAL (NASA LOOB AT NASA ILALIM LAMANG NG ATTENDANCE LOG) -->
+            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
+                    <div>
+                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                        <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
                     </div>
-                </section>
+                </div>
 
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
-                </section>
+                <div class="p-6 max-h-[600px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                    </section>
 
-                <section class="space-y-2 pb-2">
-                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
-                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual[cite: 5].</p>
-                        <p class="text-[11px] text-emerald-700">Maaari mo nang markahan ang checkbox sa itaas para mag-register.</p>
-                    </div>
-                </section>
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                        <ul class="list-disc pl-5 space-y-1">
+                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                        </ul>
+                    </section>
+
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
+                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                            </div>
+                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
+                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                            </div>
+                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
+                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
+                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                    </section>
+
+                    <section class="space-y-2 pb-2">
+                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
+                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                    </section>
+                </div>
             </div>
-        </div>
+        {% endif %}
     </main>
 
     <script>
-        let hasReadToEnd = false;
-
-        function checkManualScroll(element) {
-            if (element.scrollHeight - element.scrollTop <= element.clientHeight + 25) {
-                if (!hasReadToEnd) {
-                    hasReadToEnd = true;
-                    const checkbox = document.getElementById('agree_terms');
-                    if (checkbox) {
-                        checkbox.disabled = false;
-                        checkbox.checked = true;
-                    }
-                    const label = document.getElementById('agree_label');
-                    if (label) {
-                        label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa KABS Manual[cite: 5].";
-                        label.classList.remove('text-slate-500');
-                        label.classList.add('text-slate-800');
-                    }
-                    const submitBtn = document.getElementById('register_submit_btn');
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.classList.remove('bg-slate-400', 'cursor-not-allowed');
-                        submitBtn.classList.add('bg-slate-900', 'hover:bg-slate-800', 'cursor-pointer');
-                    }
-                }
-            }
-        }
-
         {% if not user %}
         let html5QrCode = null;
 
@@ -1226,14 +1171,6 @@ def register():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
     contact = request.form.get("contact", "").strip()
-    agree_terms = request.form.get("agree_terms")
-
-    if not agree_terms:
-        flash(
-            "❌ Kailangan mong basahin at lagyan ng check ang pagsang-ayon sa KABS Volunteer Manual bago makapag-register[cite: 5].",
-            "danger",
-        )
-        return redirect(url_for("index"))
 
     if not email.endswith("@gmail.com") or len(email) <= 10:
         flash("❌ Valid @gmail.com address lamang ang tinatanggap!", "danger")
