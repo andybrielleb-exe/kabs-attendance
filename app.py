@@ -195,22 +195,32 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
+    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <img src="/static/images/logo.jpg" alt="KABS Logo" class="w-11 h-11 rounded-lg object-cover bg-white p-0.5 border border-slate-700 shadow-sm" onerror="this.src='/static/images/logo.png';">
+                <img src="/static/images/logo.jpg" alt="KABS Logo" class="w-10 h-10 rounded-lg object-cover bg-white p-0.5 border border-slate-700 shadow-sm" onerror="this.src='/static/images/logo.png';">
                 <div>
-                    <h1 class="font-extrabold text-white text-base sm:text-lg leading-tight">KABS ATTENDANCE PORTAL</h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo | SK Payatas</p>
+                    <h1 class="font-extrabold text-white text-sm sm:text-base leading-tight">KABS ATTENDANCE PORTAL</h1>
+                    <p class="text-[11px] text-slate-400 hidden sm:block">Kabataan para sa Aksyon, Bayanihan, at Serbisyo | SK Payatas</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-2">
-                <button type="button" onclick="openManualModal()" class="text-xs text-slate-200 hover:text-white bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-semibold shadow-sm transition-all">
-                    <span>📖</span> KABS Full Manual
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button type="button" onclick="openManualModal()" class="text-xs text-slate-200 hover:text-white bg-blue-700 hover:bg-blue-600 px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-semibold shadow-sm transition-all">
+                    <span>📖</span> <span class="hidden md:inline">KABS</span> Manual
                 </button>
                 {% if user %}
-                <span class="text-xs text-slate-300 hidden md:inline">| <b class="text-white">{{ user.name }}</b></span>
-                <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">Log Out</a>
+                <!-- CLICKABLE USER PROFILE IN HEADER -->
+                <button type="button" onclick="focusProfileSection()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
+                    {% if user.get('profile_pic') %}
+                        <img src="/static/profiles/{{ user.get('profile_pic') }}" class="w-5 h-5 rounded-full object-cover">
+                    {% else %}
+                        <span>👤</span>
+                    {% endif %}
+                    <span class="font-bold text-white max-w-[120px] sm:max-w-none truncate">{{ user.get('name') }}</span>
+                    <span class="text-[10px] bg-blue-600/40 text-blue-300 px-1.5 py-0.5 rounded font-mono">Edit</span>
+                </button>
+                <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</a>
                 {% endif %}
             </div>
         </div>
@@ -319,13 +329,13 @@ MAIN_TEMPLATE = """
             <!-- LOGGED IN VIEW: PROFILE SECTION & ATTENDANCE ACTIONS -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                 
-                <!-- KABS VOLUNTEER PROFILE CARD -->
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm md:col-span-1">
+                <!-- KABS VOLUNTEER PROFILE CARD (CAN BE SCROLLED TO / EDITED) -->
+                <div id="kabs-profile-card" class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm md:col-span-1 transition-all duration-300">
                     <div class="flex items-center justify-between border-b pb-3 mb-4">
                         <h2 class="text-base font-bold text-slate-900">KABS Profile</h2>
-                        <span class="inline-block bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase border border-blue-200">
-                            Official Volunteer
-                        </span>
+                        <button type="button" onclick="openEditProfileModal()" class="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1">
+                            <span>✏️</span> Edit Profile
+                        </button>
                     </div>
 
                     <div class="text-center space-y-3">
@@ -515,6 +525,38 @@ MAIN_TEMPLATE = """
             </div>
         </div>
     </main>
+
+    <!-- EDIT PROFILE MODAL -->
+    {% if user %}
+    <div id="edit-profile-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="font-bold text-slate-900 text-base">✏️ Edit KABS Profile</h3>
+                <button type="button" onclick="closeEditProfileModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            
+            <form action="/edit-profile" method="POST" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
+                    <input type="text" name="name" maxlength="50" required value="{{ user.get('name') }}" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Registered Email (Cannot be changed)</label>
+                    <input type="email" value="{{ user.get('email') }}" disabled class="w-full text-sm py-2 px-3 border border-slate-200 bg-slate-100 text-slate-500 rounded-lg outline-none cursor-not-allowed">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Contact Number (11 digits, numbers only)</label>
+                    <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required value="{{ user.get('contact') }}" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button type="button" onclick="closeEditProfileModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-all">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- SELFIE CAMERA CAPTURE MODAL -->
     <div id="selfie-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
@@ -805,6 +847,28 @@ MAIN_TEMPLATE = """
             closeManualModal();
         }
 
+        // --- EDIT PROFILE MODAL ---
+        function openEditProfileModal() {
+            const modal = document.getElementById('edit-profile-modal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeEditProfileModal() {
+            const modal = document.getElementById('edit-profile-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function focusProfileSection() {
+            const card = document.getElementById('kabs-profile-card');
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.classList.add('ring-4', 'ring-blue-400', 'ring-offset-2');
+                setTimeout(() => {
+                    card.classList.remove('ring-4', 'ring-blue-400', 'ring-offset-2');
+                }, 1800);
+            }
+        }
+
         // --- SELFIE CAMERA LOGIC ---
         let selfieStream = null;
 
@@ -973,6 +1037,44 @@ def index():
     return render_template_string(
         MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record
     )
+
+
+@app.route("/edit-profile", methods=["POST"])
+def edit_profile():
+    user = session.get("user")
+    if not user:
+        flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
+        return redirect(url_for("index"))
+
+    name = request.form.get("name", "").strip()
+    contact = request.form.get("contact", "").strip()
+
+    if len(name) > 50 or len(name) < 2:
+        flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
+        return redirect(url_for("index"))
+
+    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+        flash("❌ Ang contact number ay dapat 11 digits at nagsisimula sa '09'.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE volunteers SET name = %s, contact = %s WHERE id = %s"
+        if DATABASE_URL
+        else "UPDATE volunteers SET name = ?, contact = ? WHERE id = ?",
+        (name, contact, user["id"]),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    session["user"]["name"] = name
+    session["user"]["contact"] = contact
+    session.modified = True
+
+    flash("✅ Matagumpay na na-update ang iyong KABS Profile information!", "success")
+    return redirect(url_for("index"))
 
 
 @app.route("/update-profile-photo", methods=["POST"])
