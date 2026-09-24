@@ -19,7 +19,6 @@ from flask import (
     url_for,
 )
 import qrcode
-from werkzeug.utils import secure_filename
 
 try:
     import psycopg2
@@ -34,18 +33,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 QR_FOLDER = os.path.join("static", "qrcodes")
-PROFILE_FOLDER = os.path.join("static", "profiles")
 os.makedirs(QR_FOLDER, exist_ok=True)
-os.makedirs(PROFILE_FOLDER, exist_ok=True)
-
-ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-
-
-def allowed_file(filename):
-    return (
-        "." in filename
-        and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
-    )
 
 
 def get_db_connection():
@@ -193,6 +181,9 @@ MAIN_TEMPLATE = """
     <title>KABS Attendance Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- CROPPER.JS PARA SA PHOTO CROPPING -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
     <!-- STICKY TOPBAR -->
@@ -210,15 +201,14 @@ MAIN_TEMPLATE = """
                     <span>📖</span> <span class="hidden md:inline">KABS</span> Manual
                 </button>
                 {% if user %}
-                <!-- CLICKABLE USER PROFILE IN HEADER -->
                 <button type="button" onclick="focusProfileSection()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
                     {% if user.get('profile_pic') %}
-                        <img src="/static/profiles/{{ user.get('profile_pic') }}" class="w-5 h-5 rounded-full object-cover">
+                        <img src="{{ user.get('profile_pic') }}" class="w-5 h-5 rounded-full object-cover">
                     {% else %}
                         <span>👤</span>
                     {% endif %}
                     <span class="font-bold text-white max-w-[120px] sm:max-w-none truncate">{{ user.get('name') }}</span>
-                    <span class="text-[10px] bg-blue-600/40 text-blue-300 px-1.5 py-0.5 rounded font-mono">Edit</span>
+                    <span class="text-[10px] bg-blue-600/40 text-blue-300 px-1.5 py-0.5 rounded font-mono">Profile</span>
                 </button>
                 <a href="/logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</a>
                 {% endif %}
@@ -329,7 +319,7 @@ MAIN_TEMPLATE = """
             <!-- LOGGED IN VIEW: PROFILE SECTION & ATTENDANCE ACTIONS -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                 
-                <!-- KABS VOLUNTEER PROFILE CARD (CAN BE SCROLLED TO / EDITED) -->
+                <!-- KABS VOLUNTEER PROFILE CARD -->
                 <div id="kabs-profile-card" class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm md:col-span-1 transition-all duration-300">
                     <div class="flex items-center justify-between border-b pb-3 mb-4">
                         <h2 class="text-base font-bold text-slate-900">KABS Profile</h2>
@@ -341,7 +331,7 @@ MAIN_TEMPLATE = """
                     <div class="text-center space-y-3">
                         <div class="relative w-28 h-28 mx-auto">
                             {% if user.get('profile_pic') %}
-                                <img src="/static/profiles/{{ user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
+                                <img src="{{ user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
                             {% else %}
                                 <div class="w-28 h-28 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-3xl mx-auto">
                                     👤
@@ -372,9 +362,7 @@ MAIN_TEMPLATE = """
                         <div class="pt-2 border-t border-slate-100 flex flex-col gap-2">
                             <label class="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer text-center transition-all flex items-center justify-center gap-1.5">
                                 <span>📁</span> Choose Photo
-                                <form id="upload-photo-form" action="/update-profile-photo" method="POST" enctype="multipart/form-data" class="hidden">
-                                    <input type="file" name="photo" accept="image/*" onchange="document.getElementById('upload-photo-form').submit();">
-                                </form>
+                                <input type="file" id="choose-photo-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
                             </label>
 
                             <button type="button" onclick="openSelfieModal()" class="w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-all flex items-center justify-center gap-1.5">
@@ -526,6 +514,31 @@ MAIN_TEMPLATE = """
         </div>
     </main>
 
+    <!-- CROPPER MODAL NA MAY DONE BUTTON -->
+    <div id="cropper-modal" class="fixed inset-0 bg-slate-900/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-slate-900 text-sm">✂️ Crop Your Profile Photo</h3>
+                <button type="button" onclick="closeCropperModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="max-h-[55vh] overflow-hidden bg-slate-900 rounded-xl flex items-center justify-center">
+                <img id="image-to-crop" src="" class="max-w-full block">
+            </div>
+
+            <div class="flex justify-between items-center pt-2">
+                <span class="text-xs text-slate-500">I-drag o i-scale ang bilog para magkasya ang mukha.</span>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeCropperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
+                    <!-- DONE BUTTON -->
+                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                        <span>✓</span> Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- EDIT PROFILE MODAL -->
     {% if user %}
     <div id="edit-profile-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
@@ -571,12 +584,12 @@ MAIN_TEMPLATE = """
             </div>
             <div class="flex justify-end gap-2 pt-2">
                 <button type="button" onclick="closeSelfieModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
-                <button type="button" onclick="captureAndUploadSelfie()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Save</button>
+                <button type="button" onclick="captureSelfieToCrop()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Proceed to Crop</button>
             </div>
         </div>
     </div>
 
-    <!-- BUONG KABS VOLUNTEER MANUAL MODAL (WITH SCROLL TO END ENFORCEMENT) -->
+    <!-- BUONG KABS VOLUNTEER MANUAL MODAL -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
@@ -674,11 +687,6 @@ MAIN_TEMPLATE = """
                                 <tr><td class="p-2 font-semibold">Selection/Retention</td><td class="p-2">Top volunteers with highest accumulated hours</td><td class="p-2">Flexible entry point for youth</td></tr>
                             </tbody>
                         </table>
-                    </div>
-
-                    <div class="text-xs space-y-1 mt-2">
-                        <p><b>Volunteer Managers:</b> The KABS Managers shall be the <b>SK Chairperson</b> and <b>SK Adviser</b>, tasked with coordinating, mentoring, and monitoring volunteer teams.</p>
-                        <p><b>Program Secretariat:</b> Administrative and operational support appointed from active volunteers to manage records, documentation, and social media platforms.</p>
                     </div>
                 </section>
 
@@ -800,6 +808,7 @@ MAIN_TEMPLATE = """
 
     <script>
         let hasReadToEnd = false;
+        let cropper = null;
 
         function openManualModal() {
             document.getElementById('manual-modal').classList.remove('hidden');
@@ -845,6 +854,81 @@ MAIN_TEMPLATE = """
                 submitBtn.classList.add('bg-slate-900', 'hover:bg-slate-800', 'cursor-pointer');
             }
             closeManualModal();
+        }
+
+        // --- CROPPER MODAL LOGIC ---
+        function openCropperWithImage(imgUrl) {
+            const modal = document.getElementById('cropper-modal');
+            const imgElement = document.getElementById('image-to-crop');
+            imgElement.src = imgUrl;
+            modal.classList.remove('hidden');
+
+            if (cropper) {
+                cropper.destroy();
+            }
+
+            setTimeout(() => {
+                cropper = new Cropper(imgElement, {
+                    aspectRatio: 1, // Exact Square para bilog ang avatar
+                    viewMode: 1,
+                    autoCropArea: 0.85,
+                    responsive: true,
+                });
+            }, 100);
+        }
+
+        function closeCropperModal() {
+            const modal = document.getElementById('cropper-modal');
+            modal.classList.add('hidden');
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            const input = document.getElementById('choose-photo-input');
+            if (input) input.value = '';
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    openCropperWithImage(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function applyCropAndSave() {
+            if (!cropper) return;
+            const btn = document.getElementById('crop-done-btn');
+            btn.innerText = "⏳ Saving...";
+            btn.disabled = true;
+
+            // Kunin ang cropped image bilang compressed WebP/JPEG Data URL (256x256)
+            const croppedCanvas = cropper.getCroppedCanvas({ width: 256, height: 256 });
+            const base64Data = croppedCanvas.toDataURL('image/jpeg', 0.85);
+
+            fetch('/save-cropped-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_data: base64Data })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || "Failed to save profile picture.");
+                    btn.innerText = "Done";
+                    btn.disabled = false;
+                }
+            })
+            .catch(() => {
+                alert("Network error saving photo.");
+                btn.innerText = "Done";
+                btn.disabled = false;
+            });
         }
 
         // --- EDIT PROFILE MODAL ---
@@ -897,31 +981,18 @@ MAIN_TEMPLATE = """
             }
         }
 
-        function captureAndUploadSelfie() {
+        function captureSelfieToCrop() {
             const video = document.getElementById('selfie-video');
             const canvas = document.getElementById('selfie-canvas');
-            canvas.width = video.videoWidth || 400;
-            canvas.height = video.videoHeight || 400;
+            canvas.width = video.videoWidth || 480;
+            canvas.height = video.videoHeight || 480;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             const dataUrl = canvas.toDataURL('image/jpeg');
-            
-            fetch('/save-selfie', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image_data: dataUrl })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert(data.message || "Failed to save selfie.");
-                }
-            })
-            .catch(() => alert("Error uploading selfie."))
-            .finally(() => closeSelfieModal());
+            closeSelfieModal();
+            // I-forward ang selfie image diretso sa Cropper tool
+            openCropperWithImage(dataUrl);
         }
 
         {% if not user %}
@@ -1077,79 +1148,34 @@ def edit_profile():
     return redirect(url_for("index"))
 
 
-@app.route("/update-profile-photo", methods=["POST"])
-def update_profile_photo():
+# DIREKTANG NAKA-SAVE SA DATABASE BILANG BASE64 STRING PARA PAREHAS SA LAHAT NG DEVICES
+@app.route("/save-cropped-profile", methods=["POST"])
+def save_cropped_profile():
     user = session.get("user")
     if not user:
-        return redirect(url_for("index"))
-
-    file = request.files.get("photo")
-    if file and file.filename != "" and allowed_file(file.filename):
-        ext = file.filename.rsplit(".", 1)[1].lower()
-        filename = f"profile_{user['id']}_{secrets.token_hex(4)}.{ext}"
-        filepath = os.path.join(PROFILE_FOLDER, filename)
-        file.save(filepath)
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
-            if DATABASE_URL
-            else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
-            (filename, user["id"]),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        session["user"]["profile_pic"] = filename
-        session.modified = True
-        flash("✅ Matagumpay na na-update ang iyong Profile Picture!", "success")
-    else:
-        flash("❌ Invalid na imahe. Siguraduhing PNG, JPG, o JPEG.", "danger")
-
-    return redirect(url_for("index"))
-
-
-@app.route("/save-selfie", methods=["POST"])
-def save_selfie():
-    user = session.get("user")
-    if not user:
-        return jsonify(
-            {"success": False, "message": "Kailangang naka-login muna."}
-        )
+        return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
     data = request.json or {}
     image_data = data.get("image_data")
     if not image_data or not image_data.startswith("data:image"):
-        return jsonify({"success": False, "message": "No selfie data received."})
+        return jsonify({"success": False, "message": "Walang natanggap na cropped photo."})
 
     try:
-        header, encoded = image_data.split(",", 1)
-        decoded = base64.b64decode(encoded)
-        filename = f"selfie_{user['id']}_{secrets.token_hex(4)}.jpg"
-        filepath = os.path.join(PROFILE_FOLDER, filename)
-
-        with open(filepath, "wb") as f:
-            f.write(decoded)
-
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
             if DATABASE_URL
             else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
-            (filename, user["id"]),
+            (image_data, user["id"]),
         )
         conn.commit()
         cursor.close()
         conn.close()
 
-        session["user"]["profile_pic"] = filename
+        session["user"]["profile_pic"] = image_data
         session.modified = True
-        flash(
-            "✅ Matagumpay na nai-save ang iyong selfie profile photo!", "success"
-        )
+        flash("✅ Matagumpay na na-crop at na-save ang iyong Profile Picture!", "success")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
