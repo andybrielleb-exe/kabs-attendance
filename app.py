@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v2")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v3")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -150,6 +150,7 @@ def authenticate_user_by_qr(raw_qr_input):
         return None
 
     raw = str(raw_qr_input).strip()
+    # Linisin ang panlabas na quotes kung mayroon man
     if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
         raw = raw[1:-1].strip()
 
@@ -158,7 +159,7 @@ def authenticate_user_by_qr(raw_qr_input):
     ph = "%s" if USE_POSTGRES else "?"
     user = None
 
-    # Step 1: Subukang hanapin gamit ang KABS-XXXX pattern saanman sa scanned text
+    # Hakbang 1: Hanapin gamit ang volunteer code pattern (hal. KABS-4F2A o KABS-7F2D) saan man sa string
     code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
     if code_match:
         target_code = code_match.group(0).upper().strip()
@@ -168,7 +169,7 @@ def authenticate_user_by_qr(raw_qr_input):
         )
         user = cursor.fetchone()
 
-    # Step 2: Subukang hanapin gamit ang token mula sa URL link
+    # Hakbang 2: Hanapin gamit ang token mula sa link (hal. /qr-auth/TOKEN)
     if not user:
         token_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
         if token_match:
@@ -179,7 +180,7 @@ def authenticate_user_by_qr(raw_qr_input):
             )
             user = cursor.fetchone()
 
-    # Step 3: Subukang hanapin gamit ang JSON format
+    # Hakbang 3: Hanapin kung JSON payload ang laman
     if not user:
         try:
             fixed_json = raw.replace("'", '"')
@@ -205,7 +206,7 @@ def authenticate_user_by_qr(raw_qr_input):
         except Exception:
             pass
 
-    # Step 4: Direct check sa buong string bilang token o volunteer code
+    # Hakbang 4: Direct exact match sa token o volunteer code
     if not user:
         cursor.execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph} LIMIT 1",
@@ -384,7 +385,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
+            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -729,7 +730,7 @@ MAIN_TEMPLATE = """
                         if (data.success) {
                             window.location.replace('/');
                         } else {
-                            alert(data.message || "Invalid QR pass.");
+                            alert(data.message + "\\n\\nNabasa ng scanner: " + decodedText);
                             isProcessingScan = false;
                             window.location.reload();
                         }
@@ -1134,7 +1135,7 @@ def edit_profile():
     session_user = session.get("user")
     if not session_user:
         flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("profile"))
 
     name = request.form.get("name", "").strip()
     contact = request.form.get("contact", "").strip()
@@ -1470,12 +1471,10 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # Ang QR Code ay naglalaman ng direct authentication link
-    qr_magic_link = url_for("qr_direct_auth", token=auth_token, _external=True)
-
+    # Ang nilalaman ng QR ay ang mismong volunteer code para 100% compatible sa lahat ng scanners
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
-    img = qrcode.make(qr_magic_link)
+    img = qrcode.make(unique_volunteer_code)
     img.save(qr_path)
 
     cursor.execute(
@@ -1492,6 +1491,7 @@ def register():
         "email": email,
         "volunteer_code": unique_volunteer_code,
     }
+    session.modified = True
     flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
 
