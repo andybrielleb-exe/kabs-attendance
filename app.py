@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v6")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v7")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -51,7 +51,7 @@ def get_db_connection():
 
 
 def calculate_duration(time_in_str, time_out_str):
-    """Kinukwenta ang agwat ng oras sa pagitan ng Time In at Time Out."""
+    """Kinukwenta ang kabuuang agwat ng oras kahit nakasara ang telepono habang naka-duty."""
     if not time_in_str or not time_out_str:
         return None
     time_format = "%Y-%m-%d %I:%M:%S %p"
@@ -409,6 +409,7 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
+                        <!-- STRICT MANUAL AGREEMENT -->
                         <div class="pt-2 border-t border-slate-100">
                             <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
                                 <div class="flex items-center justify-between">
@@ -436,7 +437,7 @@ MAIN_TEMPLATE = """
             <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
-                <!-- PUNCH TIME IN / TIME OUT CARD -->
+                <!-- PUNCH TIME IN / TIME OUT CARD NA MAY LIVE TIMER -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if active_record %}
                         <div class="flex items-center justify-between mb-2">
@@ -445,7 +446,7 @@ MAIN_TEMPLATE = """
                                 ● Clocked In
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 mb-4">Kasalukuyan kang naka-duty. Pindutin lamang ang button para mag-Time Out.</p>
+                        <p class="text-xs text-slate-500 mb-4">Patuloy na nagbibilang ang oras sa server kahit nakasara ang phone o offline.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
                             <div class="flex justify-between">
@@ -458,7 +459,14 @@ MAIN_TEMPLATE = """
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-slate-500 font-medium">Time In:</span>
-                                <span class="font-bold text-emerald-700">{{ active_record[3] }}</span>
+                                <span class="font-bold text-emerald-700" id="session-time-in">{{ active_record[3] }}</span>
+                            </div>
+                            <!-- LIVE RUNNING TIMER -->
+                            <div class="flex justify-between items-center pt-1 border-t border-slate-200">
+                                <span class="text-slate-500 font-medium">Running Duty Time:</span>
+                                <span class="font-mono font-bold text-blue-700 text-sm bg-blue-50 px-2 py-0.5 rounded border border-blue-200" id="live-timer">
+                                    00:00:00
+                                </span>
                             </div>
                         </div>
 
@@ -501,7 +509,7 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- ATTENDANCE TABLE WITH DURATION/TOTAL HOURS COLUMN -->
+            <!-- ATTENDANCE TABLE WITH VOLUNTEER HOURS -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -596,17 +604,17 @@ MAIN_TEMPLATE = """
                 <div class="p-6 max-h-[600px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                        <p>Young people are recognized as vital partners in nation-building[cite: 4]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 4]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 4]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 4].</p>
+                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 4].</p>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 4]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 4].</p>
                         <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                            <li>Promote active youth participation in community development and local governance[cite: 4].</li>
+                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 4].</li>
+                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 4].</li>
                         </ul>
                     </section>
 
@@ -615,27 +623,27 @@ MAIN_TEMPLATE = """
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                                 <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 4].</p>
                             </div>
                             <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                                 <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 4].</p>
                             </div>
                             <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
                                 <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 4].</p>
                             </div>
                         </div>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 4].</p>
                     </section>
 
                     <section class="space-y-2 pb-2">
                         <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 4]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 4]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 4].</p>
                     </section>
                 </div>
             </div>
@@ -656,17 +664,17 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 4]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 4]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 4]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 4].</p>
+                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 4].</p>
                 </section>
 
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 4]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 4].</p>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                        <li>Promote active youth participation in community development and local governance[cite: 4].</li>
+                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 4].</li>
+                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 4].</li>
                     </ul>
                 </section>
 
@@ -675,30 +683,30 @@ MAIN_TEMPLATE = """
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                             <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 4].</p>
                         </div>
                         <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                             <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 4].</p>
                         </div>
                         <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
                             <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 4].</p>
                         </div>
                     </div>
                 </section>
 
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
-                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 4].</p>
                 </section>
 
                 <section class="space-y-2 pb-2">
                     <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 4]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 4]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 4].</p>
                     <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual[cite: 5].</p>
-                        <p class="text-[11px] text-emerald-700">Maaari mo nang i-unlock ang registration form[cite: 5].</p>
+                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual[cite: 4].</p>
+                        <p class="text-[11px] text-emerald-700">Maaari mo nang i-unlock ang registration form[cite: 4].</p>
                     </div>
                 </section>
             </div>
@@ -750,7 +758,7 @@ MAIN_TEMPLATE = """
             }
             const label = document.getElementById('agree_label');
             if (label) {
-                label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual[cite: 5].";
+                label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual[cite: 4].";
                 label.classList.remove('text-slate-500');
                 label.classList.add('text-slate-800');
             }
@@ -762,6 +770,50 @@ MAIN_TEMPLATE = """
             }
             closeManualModal();
         }
+
+        // --- LIVE RUNNING TIMER SCRIPT ---
+        function startLiveDutyTimer() {
+            const timeInElem = document.getElementById('session-time-in');
+            const timerElem = document.getElementById('live-timer');
+            if (!timeInElem || !timerElem) return;
+
+            const timeInText = timeInElem.innerText.trim();
+            // Format: "YYYY-MM-DD hh:mm:ss AM/PM"
+            function parseCustomDate(str) {
+                const parts = str.split(' ');
+                if (parts.length < 3) return new Date(str);
+                const [dPart, tPart, ampm] = parts;
+                const [year, month, day] = dPart.split('-').map(Number);
+                let [hours, minutes, seconds] = tPart.split(':').map(Number);
+                if (ampm === 'PM' && hours < 12) hours += 12;
+                if (ampm === 'AM' && hours === 12) hours = 0;
+                return new Date(year, month - 1, day, hours, minutes, seconds);
+            }
+
+            const startTime = parseCustomDate(timeInText).getTime();
+
+            function updateTimer() {
+                const now = new Date().getTime();
+                let diffSec = Math.floor((now - startTime) / 1000);
+                if (diffSec < 0) diffSec = 0;
+
+                const hrs = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+                const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+                const secs = String(diffSec % 60).padStart(2, '0');
+
+                timerElem.innerText = `${hrs}:${mins}:${secs}`;
+            }
+
+            updateTimer();
+            setInterval(updateTimer, 1000);
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            startLiveDutyTimer();
+            {% if not user %}
+            startScanner();
+            {% endif %}
+        });
 
         {% if not user %}
         let html5QrCode = null;
@@ -841,10 +893,6 @@ MAIN_TEMPLATE = """
                 desc.innerText = "Naka-register ka na? Mag-login gamit ang iyong account.";
             }
         }
-
-        window.addEventListener("DOMContentLoaded", () => {
-            startScanner();
-        });
         {% endif %}
     </script>
 </body>
@@ -1481,7 +1529,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 4].",
             "danger",
         )
         return redirect(url_for("index"))
@@ -1542,7 +1590,6 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # I-save ang QR code gamit ang volunteer code
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
     img = qrcode.make(unique_volunteer_code)
