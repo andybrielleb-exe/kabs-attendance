@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v4")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v5")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -153,17 +153,12 @@ def authenticate_user_by_qr(raw_qr_input):
     if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
         raw = raw[1:-1].strip()
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-    user = None
-
     v_id = None
     v_token = None
     v_name = None
     v_code = None
 
-    # Hakbang 1: Parse bilang JSON kung may structure
+    # Hakbang 1: Pagkuha sa JSON Data mula sa scanner
     try:
         fixed_json = raw.replace("'", '"')
         data = json.loads(fixed_json)
@@ -175,7 +170,7 @@ def authenticate_user_by_qr(raw_qr_input):
     except Exception:
         pass
 
-    # Hakbang 2: Regex extraction kung hindi JSON
+    # Hakbang 2: Fallback gamit ang Regex kung hindi na-parse bilang JSON
     if not v_code:
         code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
         if code_match:
@@ -186,60 +181,65 @@ def authenticate_user_by_qr(raw_qr_input):
         if url_match:
             v_token = url_match.group(1).strip()
 
-    # Priority A: Tugmaan gamit ang ID at Token
-    if v_id and v_token:
-        cursor.execute(
-            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND auth_token = {ph}",
-            (v_id, v_token),
-        )
-        user = cursor.fetchone()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    user = None
 
-    # Priority B: Tugmaan gamit ang ID at Name (Fall-back para sa lumang QR passes)
-    if not user and v_id and v_name:
-        cursor.execute(
+    # Query Helper na ligtas sa aborted transaction ng PostgreSQL
+    def try_execute(query, params):
+        try:
+            cursor.execute(query, params)
+            return cursor.fetchone()
+        except Exception:
+            if USE_POSTGRES:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            return None
+
+    # Paghahanap 1: Gamit ang ID at Pangalan (Eksaktong solusyon sa iyong lumang QR Pass)
+    if v_id and v_name:
+        user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND LOWER(name) = LOWER({ph})",
             (v_id, v_name.strip()),
         )
-        user = cursor.fetchone()
-        # Kung nagtugma, i-sync ang bagong token
-        if user and v_token:
-            try:
-                cursor.execute(f"UPDATE volunteers SET auth_token = {ph} WHERE id = {ph}", (v_token, v_id))
-                conn.commit()
-            except Exception:
-                pass
 
-    # Priority C: Tugmaan gamit ang Volunteer Code (KABS-XXXX)
+    # Paghahanap 2: Gamit ang Volunteer Code (hal. KABS-4F2A o KABS-7F2D)
     if not user and v_code:
-        cursor.execute(
+        user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph})",
             (v_code,),
         )
-        user = cursor.fetchone()
 
-    # Priority D: Tugmaan gamit ang Token mag-isa
+    # Paghahanap 3: Gamit ang ID lamang
+    if not user and v_id:
+        user = try_execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph}",
+            (v_id,),
+        )
+
+    # Paghahanap 4: Gamit ang Token
     if not user and v_token:
-        cursor.execute(
+        user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = {ph}",
             (v_token,),
         )
-        user = cursor.fetchone()
 
-    # Priority E: Tugmaan gamit ang Name kung eksakto ang pagkakasulat
+    # Paghahanap 5: Gamit ang Pangalan lamang
     if not user and v_name:
-        cursor.execute(
+        user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE LOWER(name) = LOWER({ph})",
             (v_name.strip(),),
         )
-        user = cursor.fetchone()
 
-    # Priority F: Direct exact match sa buong string
+    # Paghahanap 6: Direct check sa raw input string
     if not user:
-        cursor.execute(
+        user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph}",
             (raw.upper(), raw),
         )
-        user = cursor.fetchone()
 
     cursor.close()
     conn.close()
@@ -412,7 +412,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
+            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -757,13 +757,13 @@ MAIN_TEMPLATE = """
                         if (data.success) {
                             window.location.replace('/');
                         } else {
-                            alert(data.message);
+                            alert("❌ Hindi kinilala ang QR Pass. Pakisubukan muli.");
                             isProcessingScan = false;
                             window.location.reload();
                         }
                     })
                     .catch(() => {
-                        alert("Network o server connection error sa pag-scan.");
+                        alert("Network o connection error sa pag-login.");
                         isProcessingScan = false;
                         window.location.reload();
                     });
@@ -1498,7 +1498,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # I-save ang QR code gamit ang volunteer code
+    # Ang ilalagay sa QR code ay ang mismong volunteer code para 100% universal
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
     img = qrcode.make(unique_volunteer_code)
