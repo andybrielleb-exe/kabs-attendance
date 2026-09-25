@@ -38,12 +38,14 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+USE_POSTGRES = bool(DATABASE_URL and psycopg2)
+
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
 
 def get_db_connection():
-    if DATABASE_URL and psycopg2:
+    if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
     return sqlite3.connect("kabs.db")
 
@@ -51,7 +53,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    if DATABASE_URL and psycopg2:
+    if USE_POSTGRES:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS volunteers (
@@ -147,93 +149,78 @@ def authenticate_user_by_qr(raw_qr_input):
     if not raw_qr_input:
         return None
 
-    cleaned_str = str(raw_qr_input).strip()
-    if (cleaned_str.startswith('"') and cleaned_str.endswith('"')) or (
-        cleaned_str.startswith("'") and cleaned_str.endswith("'")
-    ):
-        cleaned_str = cleaned_str[1:-1].strip()
+    raw = str(raw_qr_input).strip()
+    if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
+        raw = raw[1:-1].strip()
+
+    # 1. Kunin ang volunteer code kung may KABS-XXXX pattern
+    found_code = None
+    code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
+    if code_match:
+        found_code = code_match.group(0).upper().strip()
+
+    # 2. Kunin ang token kung may URL o JSON
+    found_token = None
+    url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
+    if url_match:
+        found_token = url_match.group(1).strip()
+    else:
+        try:
+            fixed_json = raw.replace("'", '"')
+            data = json.loads(fixed_json)
+            if isinstance(data, dict):
+                if data.get("token"):
+                    found_token = str(data.get("token")).strip()
+                if not found_code and data.get("code"):
+                    found_code = str(data.get("code")).upper().strip()
+        except Exception:
+            pass
+
+    if not found_token and re.fullmatch(r"[a-fA-F0-9]{32}", raw):
+        found_token = raw
 
     conn = get_db_connection()
     cursor = conn.cursor()
     user = None
+    ph = "%s" if USE_POSTGRES else "?"
 
-    # Step 1: URL Match (/qr-auth/TOKEN)
-    token_url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", cleaned_str)
-    if token_url_match:
-        token = token_url_match.group(1).strip()
-        cursor.execute(
-            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
-            if DATABASE_URL
-            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = ?",
-            (token,),
-        )
+    try:
+        query = f"""
+            SELECT id, name, email, contact, qr_code, volunteer_code 
+            FROM volunteers 
+            WHERE (UPPER(volunteer_code) = UPPER({ph}) AND {ph} IS NOT NULL)
+               OR (auth_token = {ph} AND {ph} IS NOT NULL)
+            LIMIT 1
+        """
+        cursor.execute(query, (found_code, found_code, found_token, found_token))
         user = cursor.fetchone()
-
-    # Step 2: JSON Payload Match
-    if not user:
+    except Exception:
         try:
-            fixed_json = cleaned_str.replace("'", '"')
-            data = json.loads(fixed_json)
-            if isinstance(data, dict):
-                v_id = data.get("id")
-                token = data.get("token")
-                v_code = data.get("code")
-
-                if v_id and token:
-                    cursor.execute(
-                        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = %s AND auth_token = %s"
-                        if DATABASE_URL
-                        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = ? AND auth_token = ?",
-                        (v_id, token),
-                    )
-                    user = cursor.fetchone()
-
-                if not user and v_code:
-                    cursor.execute(
-                        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
-                        if DATABASE_URL
-                        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-                        (str(v_code).upper().strip(),),
-                    )
-                    user = cursor.fetchone()
+            conn.rollback()
         except Exception:
             pass
+        if found_code:
+            try:
+                cursor.execute(
+                    f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph})",
+                    (found_code,),
+                )
+                user = cursor.fetchone()
+            except Exception:
+                pass
+    finally:
+        cursor.close()
+        conn.close()
 
-    # Step 3: Volunteer Code Regex Search (KABS-XXXX)
-    if not user:
-        code_match = re.search(r"KABS-[A-Za-z0-9]+", cleaned_str, re.IGNORECASE)
-        if code_match:
-            found_code = code_match.group(0).upper().strip()
-            cursor.execute(
-                "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(%s)"
-                if DATABASE_URL
-                else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER(?)",
-                (found_code,),
-            )
-            user = cursor.fetchone()
-
-    # Step 4: Token Direct Match
-    if not user:
-        cursor.execute(
-            "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = %s"
-            if DATABASE_URL
-            else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = ?",
-            (cleaned_str,),
-        )
-        user = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
     return user
 
 
 def get_fresh_user_profile(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
     cursor.execute(
-        "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = %s"
-        if DATABASE_URL
-        else "SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = ?",
+        f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic FROM volunteers WHERE id = {ph}",
         (user_id,),
     )
     row = cursor.fetchone()
@@ -263,6 +250,7 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
+    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -393,7 +381,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
+            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -719,7 +707,7 @@ MAIN_TEMPLATE = """
 
             const scanStatus = document.getElementById('scan-status');
             if (scanStatus) {
-                scanStatus.innerHTML = "<span class='text-blue-600 font-bold animate-pulse'>⏳ Logging in with QR pass...</span>";
+                scanStatus.innerHTML = "<span class='text-emerald-600 font-bold animate-pulse'>✅ QR Detected! Logging in...</span>";
             }
 
             if (html5QrCode) {
@@ -732,17 +720,17 @@ MAIN_TEMPLATE = """
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) {
-                            window.location.href = "/";
+                            window.location.replace('/');
                         } else {
                             alert(data.message || "Invalid QR pass.");
                             isProcessingScan = false;
-                            location.reload();
+                            window.location.reload();
                         }
                     })
                     .catch(() => {
                         alert("Network o server connection error sa pag-scan.");
                         isProcessingScan = false;
-                        location.reload();
+                        window.location.reload();
                     });
                 });
             }
@@ -1070,12 +1058,11 @@ def index():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
 
     if user:
         cursor.execute(
-            "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
-            if DATABASE_URL
-            else "SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+            f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
             (user["id"],),
         )
         active_record = cursor.fetchone()
@@ -1113,6 +1100,7 @@ def qr_direct_auth(token):
             "email": user[2],
             "volunteer_code": user[5] if len(user) > 5 else "N/A",
         }
+        session.modified = True
         flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
     else:
         flash("❌ Invalid o expired na QR Pass.", "danger")
@@ -1154,10 +1142,9 @@ def edit_profile():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
     cursor.execute(
-        "UPDATE volunteers SET name = %s, contact = %s WHERE id = %s"
-        if DATABASE_URL
-        else "UPDATE volunteers SET name = ?, contact = ? WHERE id = ?",
+        f"UPDATE volunteers SET name = {ph}, contact = {ph} WHERE id = {ph}",
         (name, contact, session_user["id"]),
     )
     conn.commit()
@@ -1185,10 +1172,9 @@ def save_cropped_profile():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
         cursor.execute(
-            "UPDATE volunteers SET profile_pic = %s WHERE id = %s"
-            if DATABASE_URL
-            else "UPDATE volunteers SET profile_pic = ? WHERE id = ?",
+            f"UPDATE volunteers SET profile_pic = {ph} WHERE id = {ph}",
             (image_data, session_user["id"]),
         )
         conn.commit()
@@ -1283,6 +1269,7 @@ def login_qr_api():
             "email": user[2],
             "volunteer_code": user[5] if len(user) > 5 else "N/A",
         }
+        session.modified = True
         flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
         return jsonify({"success": True})
 
@@ -1303,6 +1290,7 @@ def login_code():
             "email": user[2],
             "volunteer_code": user[5] if len(user) > 5 else "N/A",
         }
+        session.modified = True
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
         flash("❌ Invalid na Volunteer Code.", "danger")
@@ -1332,10 +1320,9 @@ def login():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
     cursor.execute(
-        "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = %s AND contact = %s"
-        if DATABASE_URL
-        else "SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = ? AND contact = ?",
+        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
         (email, contact),
     )
     user = cursor.fetchone()
@@ -1349,6 +1336,7 @@ def login():
             "email": user[2],
             "volunteer_code": user[5],
         }
+        session.modified = True
         flash(f"✅ Welcome back, {user[1]}!", "success")
     else:
         flash(
@@ -1369,20 +1357,17 @@ def log_self_attendance():
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    ph = "%s" if USE_POSTGRES else "?"
 
     cursor.execute(
-        "SELECT id FROM attendance WHERE volunteer_id = %s AND time_out IS NULL ORDER BY id DESC LIMIT 1"
-        if DATABASE_URL
-        else "SELECT id FROM attendance WHERE volunteer_id = ? AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        f"SELECT id FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
         (session_user["id"],),
     )
     active_record = cursor.fetchone()
 
     if active_record:
         cursor.execute(
-            "UPDATE attendance SET time_out = %s WHERE id = %s"
-            if DATABASE_URL
-            else "UPDATE attendance SET time_out = ? WHERE id = ?",
+            f"UPDATE attendance SET time_out = {ph} WHERE id = {ph}",
             (now, active_record[0]),
         )
         flash(f"🔴 TIME OUT recorded for {session_user.get('name')} ({now})", "success")
@@ -1393,9 +1378,7 @@ def log_self_attendance():
         task_val = task if task else "Volunteer Duty"
 
         cursor.execute(
-            "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (%s, %s, %s, %s)"
-            if DATABASE_URL
-            else "INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES (?, ?, ?, ?)",
+            f"INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES ({ph}, {ph}, {ph}, {ph})",
             (session_user["id"], agenda_val, task_val, now),
         )
         flash(
@@ -1419,7 +1402,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register.",
             "danger",
         )
         return redirect(url_for("index"))
@@ -1448,11 +1431,10 @@ def register():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
 
     cursor.execute(
-        "SELECT id, name FROM volunteers WHERE email = %s"
-        if DATABASE_URL
-        else "SELECT id, name FROM volunteers WHERE email = ?",
+        f"SELECT id, name FROM volunteers WHERE email = {ph}",
         (email,),
     )
     existing_user = cursor.fetchone()
@@ -1468,7 +1450,7 @@ def register():
     auth_token = secrets.token_hex(16)
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
 
-    if DATABASE_URL:
+    if USE_POSTGRES:
         cursor.execute(
             "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic) VALUES (%s, %s, %s, %s, %s, NULL) RETURNING id",
             (name, email, contact, auth_token, unique_volunteer_code),
@@ -1481,7 +1463,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # Ang QR Code ay naglalaman ng direct authentication link
+    # I-save ang QR code na may magic link
     qr_magic_link = url_for("qr_direct_auth", token=auth_token, _external=True)
 
     qr_filename = f"volunteer_{v_id}.png"
@@ -1490,9 +1472,7 @@ def register():
     img.save(qr_path)
 
     cursor.execute(
-        "UPDATE volunteers SET qr_code = %s WHERE id = %s"
-        if DATABASE_URL
-        else "UPDATE volunteers SET qr_code = ? WHERE id = ?",
+        f"UPDATE volunteers SET qr_code = {ph} WHERE id = {ph}",
         (qr_filename, v_id),
     )
     conn.commit()
@@ -1505,6 +1485,7 @@ def register():
         "email": email,
         "volunteer_code": unique_volunteer_code,
     }
+    session.modified = True
     flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
 
@@ -1526,11 +1507,10 @@ def delete_log(log_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
 
     cursor.execute(
-        "SELECT time_out FROM attendance WHERE id = %s"
-        if DATABASE_URL
-        else "SELECT time_out FROM attendance WHERE id = ?",
+        f"SELECT time_out FROM attendance WHERE id = {ph}",
         (log_id,),
     )
     target = cursor.fetchone()
@@ -1544,9 +1524,7 @@ def delete_log(log_id):
         )
     else:
         cursor.execute(
-            "DELETE FROM attendance WHERE id = %s"
-            if DATABASE_URL
-            else "DELETE FROM attendance WHERE id = ?",
+            f"DELETE FROM attendance WHERE id = {ph}",
             (log_id,),
         )
         conn.commit()
