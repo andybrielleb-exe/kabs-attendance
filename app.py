@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v5")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v6")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -48,6 +48,27 @@ def get_db_connection():
     if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
     return sqlite3.connect("kabs.db")
+
+
+def calculate_duration(time_in_str, time_out_str):
+    """Kinukwenta ang agwat ng oras sa pagitan ng Time In at Time Out."""
+    if not time_in_str or not time_out_str:
+        return None
+    time_format = "%Y-%m-%d %I:%M:%S %p"
+    try:
+        t_in = datetime.strptime(time_in_str.strip(), time_format)
+        t_out = datetime.strptime(time_out_str.strip(), time_format)
+        diff = t_out - t_in
+        total_seconds = int(diff.total_seconds())
+        if total_seconds < 0:
+            return "0m"
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+    except Exception:
+        return None
 
 
 def init_db():
@@ -76,7 +97,8 @@ def init_db():
                 agenda TEXT,
                 task TEXT,
                 time_in TEXT,
-                time_out TEXT
+                time_out TEXT,
+                total_hours TEXT
             );
         """
         )
@@ -94,6 +116,12 @@ def init_db():
 
         try:
             cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            cursor.execute("ALTER TABLE attendance ADD COLUMN total_hours TEXT;")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -121,6 +149,7 @@ def init_db():
                 task TEXT,
                 time_in TEXT,
                 time_out TEXT,
+                total_hours TEXT,
                 FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
             )
         """
@@ -136,6 +165,8 @@ def init_db():
             cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
         if "task" not in a_cols:
             cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
+        if "total_hours" not in a_cols:
+            cursor.execute("ALTER TABLE attendance ADD COLUMN total_hours TEXT;")
 
     conn.commit()
     cursor.close()
@@ -158,7 +189,6 @@ def authenticate_user_by_qr(raw_qr_input):
     v_name = None
     v_code = None
 
-    # Hakbang 1: Pagkuha sa JSON Data mula sa scanner
     try:
         fixed_json = raw.replace("'", '"')
         data = json.loads(fixed_json)
@@ -170,7 +200,6 @@ def authenticate_user_by_qr(raw_qr_input):
     except Exception:
         pass
 
-    # Hakbang 2: Fallback gamit ang Regex kung hindi na-parse bilang JSON
     if not v_code:
         code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
         if code_match:
@@ -186,7 +215,6 @@ def authenticate_user_by_qr(raw_qr_input):
     ph = "%s" if USE_POSTGRES else "?"
     user = None
 
-    # Query Helper na ligtas sa aborted transaction ng PostgreSQL
     def try_execute(query, params):
         try:
             cursor.execute(query, params)
@@ -199,42 +227,36 @@ def authenticate_user_by_qr(raw_qr_input):
                     pass
             return None
 
-    # Paghahanap 1: Gamit ang ID at Pangalan (Eksaktong solusyon sa iyong lumang QR Pass)
     if v_id and v_name:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND LOWER(name) = LOWER({ph})",
             (v_id, v_name.strip()),
         )
 
-    # Paghahanap 2: Gamit ang Volunteer Code (hal. KABS-4F2A o KABS-7F2D)
     if not user and v_code:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph})",
             (v_code,),
         )
 
-    # Paghahanap 3: Gamit ang ID lamang
     if not user and v_id:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph}",
             (v_id,),
         )
 
-    # Paghahanap 4: Gamit ang Token
     if not user and v_token:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = {ph}",
             (v_token,),
         )
 
-    # Paghahanap 5: Gamit ang Pangalan lamang
     if not user and v_name:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE LOWER(name) = LOWER({ph})",
             (v_name.strip(),),
         )
 
-    # Paghahanap 6: Direct check sa raw input string
     if not user:
         user = try_execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph}",
@@ -387,7 +409,6 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <!-- STRICT MANUAL AGREEMENT -->
                         <div class="pt-2 border-t border-slate-100">
                             <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
                                 <div class="flex items-center justify-between">
@@ -412,7 +433,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
+            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -480,12 +501,12 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- ATTENDANCE TABLE WITH CONDITIONAL EXPORT BUTTON -->
+            <!-- ATTENDANCE TABLE WITH DURATION/TOTAL HOURS COLUMN -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
                         <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok at lumabas.</p>
+                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
                     </div>
                     
                     {% if logs and logs|length > 0 %}
@@ -514,6 +535,7 @@ MAIN_TEMPLATE = """
                                 <th class="py-3 px-4">Task</th>
                                 <th class="py-3 px-4">Time In</th>
                                 <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Total Hours</th>
                                 <th class="py-3 px-4 text-center">Action</th>
                             </tr>
                         </thead>
@@ -526,6 +548,19 @@ MAIN_TEMPLATE = """
                                 <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
                                 <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
                                     {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[6] %}
+                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
+                                            ⏱️ {{ log[6] }}
+                                        </span>
+                                    {% elif log[4] %}
+                                        <span class="text-slate-400 text-xs">N/A</span>
+                                    {% else %}
+                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
+                                            In Progress
+                                        </span>
+                                    {% endif %}
                                 </td>
                                 <td class="py-3 px-4 text-center">
                                     {% if log[4] %}
@@ -542,7 +577,7 @@ MAIN_TEMPLATE = """
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="6" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -1104,7 +1139,7 @@ def index():
 
     cursor.execute(
         """
-        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id
+        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
         ORDER BY attendance.id DESC
@@ -1236,7 +1271,7 @@ def export_attendance():
     cursor.execute(
         """
         SELECT volunteers.volunteer_code, volunteers.name, volunteers.email, volunteers.contact,
-               attendance.agenda, attendance.task, attendance.time_in, attendance.time_out
+               attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.total_hours
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
         ORDER BY attendance.id DESC
@@ -1265,6 +1300,7 @@ def export_attendance():
         "Assigned Task",
         "Time In",
         "Time Out",
+        "Total Hours",
     ])
 
     for row in records:
@@ -1277,6 +1313,7 @@ def export_attendance():
             row[5] if row[5] else "-",
             row[6],
             row[7] if row[7] else "Clocked In (Active)",
+            row[8] if row[8] else ("In Progress" if not row[7] else "-"),
         ])
 
     csv_data = "\ufeff" + output.getvalue()
@@ -1395,17 +1432,24 @@ def log_self_attendance():
     ph = "%s" if USE_POSTGRES else "?"
 
     cursor.execute(
-        f"SELECT id FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
         (session_user["id"],),
     )
     active_record = cursor.fetchone()
 
     if active_record:
+        rec_id = active_record[0]
+        time_in_val = active_record[1]
+        duration_str = calculate_duration(time_in_val, now)
+
         cursor.execute(
-            f"UPDATE attendance SET time_out = {ph} WHERE id = {ph}",
-            (now, active_record[0]),
+            f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
+            (now, duration_str, rec_id),
         )
-        flash(f"🔴 TIME OUT recorded for {session_user.get('name')} ({now})", "success")
+        flash(
+            f"🔴 TIME OUT recorded for {session_user.get('name')} ({now}) | Total Hours: {duration_str}",
+            "success",
+        )
     else:
         agenda = request.form.get("agenda", "").strip()
         task = request.form.get("task", "").strip()
@@ -1413,7 +1457,7 @@ def log_self_attendance():
         task_val = task if task else "Volunteer Duty"
 
         cursor.execute(
-            f"INSERT INTO attendance (volunteer_id, agenda, task, time_in) VALUES ({ph}, {ph}, {ph}, {ph})",
+            f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
             (session_user["id"], agenda_val, task_val, now),
         )
         flash(
@@ -1498,7 +1542,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # Ang ilalagay sa QR code ay ang mismong volunteer code para 100% universal
+    # I-save ang QR code gamit ang volunteer code
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
     img = qrcode.make(unique_volunteer_code)
