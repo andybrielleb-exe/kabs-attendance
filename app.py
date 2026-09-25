@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v7")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v8")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -446,7 +446,7 @@ MAIN_TEMPLATE = """
                                 ● Clocked In
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 mb-4">Patuloy na nagbibilang ang oras sa server kahit nakasara ang phone o offline.</p>
+                        <p class="text-xs text-slate-500 mb-4">Awtomatikong mag-ti-time out kapag nag-time out ka sa ibang device.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
                             <div class="flex justify-between">
@@ -771,14 +771,13 @@ MAIN_TEMPLATE = """
             closeManualModal();
         }
 
-        // --- LIVE RUNNING TIMER SCRIPT ---
+        // --- LIVE RUNNING TIMER & CROSS-DEVICE SYNC ---
         function startLiveDutyTimer() {
             const timeInElem = document.getElementById('session-time-in');
             const timerElem = document.getElementById('live-timer');
             if (!timeInElem || !timerElem) return;
 
             const timeInText = timeInElem.innerText.trim();
-            // Format: "YYYY-MM-DD hh:mm:ss AM/PM"
             function parseCustomDate(str) {
                 const parts = str.split(' ');
                 if (parts.length < 3) return new Date(str);
@@ -806,6 +805,18 @@ MAIN_TEMPLATE = """
 
             updateTimer();
             setInterval(updateTimer, 1000);
+
+            // Cross-device sync: sumilip sa server bawat 3 segundo kung nag-Time Out na sa ibang device
+            setInterval(() => {
+                fetch('/check-duty-status')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.is_clocked_in === false) {
+                            window.location.reload();
+                        }
+                    })
+                    .catch(() => {});
+            }, 3000);
         }
 
         window.addEventListener("DOMContentLoaded", () => {
@@ -1206,6 +1217,28 @@ def index():
     return render_template_string(
         MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record
     )
+
+
+# REAL-TIME DUTY STATUS CHECKER PARA SA LAHAT NG DEVICES
+@app.route("/check-duty-status")
+def check_duty_status():
+    session_user = session.get("user")
+    if not session_user:
+        return jsonify({"logged_in": False, "is_clocked_in": False})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+
+    cursor.execute(
+        f"SELECT id FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        (session_user["id"],),
+    )
+    active = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"logged_in": True, "is_clocked_in": bool(active)})
 
 
 @app.route("/qr-auth/<token>")
