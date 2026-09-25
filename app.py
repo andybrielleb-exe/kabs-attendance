@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v2")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -153,65 +153,68 @@ def authenticate_user_by_qr(raw_qr_input):
     if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
         raw = raw[1:-1].strip()
 
-    # 1. Kunin ang volunteer code kung may KABS-XXXX pattern
-    found_code = None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    user = None
+
+    # Step 1: Subukang hanapin gamit ang KABS-XXXX pattern saanman sa scanned text
     code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
     if code_match:
-        found_code = code_match.group(0).upper().strip()
+        target_code = code_match.group(0).upper().strip()
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) LIMIT 1",
+            (target_code,),
+        )
+        user = cursor.fetchone()
 
-    # 2. Kunin ang token kung may URL o JSON
-    found_token = None
-    url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
-    if url_match:
-        found_token = url_match.group(1).strip()
-    else:
+    # Step 2: Subukang hanapin gamit ang token mula sa URL link
+    if not user:
+        token_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
+        if token_match:
+            target_token = token_match.group(1).strip()
+            cursor.execute(
+                f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = {ph} LIMIT 1",
+                (target_token,),
+            )
+            user = cursor.fetchone()
+
+    # Step 3: Subukang hanapin gamit ang JSON format
+    if not user:
         try:
             fixed_json = raw.replace("'", '"')
             data = json.loads(fixed_json)
             if isinstance(data, dict):
-                if data.get("token"):
-                    found_token = str(data.get("token")).strip()
-                if not found_code and data.get("code"):
-                    found_code = str(data.get("code")).upper().strip()
+                v_id = data.get("id")
+                token = data.get("token")
+                v_code = data.get("code")
+
+                if v_id and token:
+                    cursor.execute(
+                        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND auth_token = {ph} LIMIT 1",
+                        (v_id, token),
+                    )
+                    user = cursor.fetchone()
+
+                if not user and v_code:
+                    cursor.execute(
+                        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) LIMIT 1",
+                        (str(v_code).upper().strip(),),
+                    )
+                    user = cursor.fetchone()
         except Exception:
             pass
 
-    if not found_token and re.fullmatch(r"[a-fA-F0-9]{32}", raw):
-        found_token = raw
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    user = None
-    ph = "%s" if USE_POSTGRES else "?"
-
-    try:
-        query = f"""
-            SELECT id, name, email, contact, qr_code, volunteer_code 
-            FROM volunteers 
-            WHERE (UPPER(volunteer_code) = UPPER({ph}) AND {ph} IS NOT NULL)
-               OR (auth_token = {ph} AND {ph} IS NOT NULL)
-            LIMIT 1
-        """
-        cursor.execute(query, (found_code, found_code, found_token, found_token))
+    # Step 4: Direct check sa buong string bilang token o volunteer code
+    if not user:
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph} LIMIT 1",
+            (raw.upper(), raw),
+        )
         user = cursor.fetchone()
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        if found_code:
-            try:
-                cursor.execute(
-                    f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph})",
-                    (found_code,),
-                )
-                user = cursor.fetchone()
-            except Exception:
-                pass
-    finally:
-        cursor.close()
-        conn.close()
 
+    cursor.close()
+    conn.close()
     return user
 
 
@@ -381,7 +384,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
+            <!-- DASHBOARD: MAGKATABI ANG PUNCH TIME AT OFFICIAL QR CODE PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
                 <!-- PUNCH TIME IN / TIME OUT CARD -->
@@ -714,7 +717,11 @@ MAIN_TEMPLATE = """
                 html5QrCode.stop().catch(() => {}).finally(() => {
                     fetch('/login-qr-api', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        credentials: 'same-origin',
                         body: JSON.stringify({ qr_payload: decodedText })
                     })
                     .then(res => res.json())
@@ -1402,7 +1409,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register.",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
             "danger",
         )
         return redirect(url_for("index"))
@@ -1463,7 +1470,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # I-save ang QR code na may magic link
+    # Ang QR Code ay naglalaman ng direct authentication link
     qr_magic_link = url_for("qr_direct_auth", token=auth_token, _external=True)
 
     qr_filename = f"volunteer_{v_id}.png"
@@ -1485,7 +1492,6 @@ def register():
         "email": email,
         "volunteer_code": unique_volunteer_code,
     }
-    session.modified = True
     flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
 
