@@ -27,7 +27,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v3")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v4")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -150,7 +150,6 @@ def authenticate_user_by_qr(raw_qr_input):
         return None
 
     raw = str(raw_qr_input).strip()
-    # Linisin ang panlabas na quotes kung mayroon man
     if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
         raw = raw[1:-1].strip()
 
@@ -159,57 +158,85 @@ def authenticate_user_by_qr(raw_qr_input):
     ph = "%s" if USE_POSTGRES else "?"
     user = None
 
-    # Hakbang 1: Hanapin gamit ang volunteer code pattern (hal. KABS-4F2A o KABS-7F2D) saan man sa string
-    code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
-    if code_match:
-        target_code = code_match.group(0).upper().strip()
+    v_id = None
+    v_token = None
+    v_name = None
+    v_code = None
+
+    # Hakbang 1: Parse bilang JSON kung may structure
+    try:
+        fixed_json = raw.replace("'", '"')
+        data = json.loads(fixed_json)
+        if isinstance(data, dict):
+            v_id = data.get("id")
+            v_token = data.get("token")
+            v_name = data.get("name")
+            v_code = data.get("code")
+    except Exception:
+        pass
+
+    # Hakbang 2: Regex extraction kung hindi JSON
+    if not v_code:
+        code_match = re.search(r"KABS-[A-Za-z0-9]+", raw, re.IGNORECASE)
+        if code_match:
+            v_code = code_match.group(0).upper().strip()
+
+    if not v_token:
+        url_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
+        if url_match:
+            v_token = url_match.group(1).strip()
+
+    # Priority A: Tugmaan gamit ang ID at Token
+    if v_id and v_token:
         cursor.execute(
-            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) LIMIT 1",
-            (target_code,),
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND auth_token = {ph}",
+            (v_id, v_token),
         )
         user = cursor.fetchone()
 
-    # Hakbang 2: Hanapin gamit ang token mula sa link (hal. /qr-auth/TOKEN)
-    if not user:
-        token_match = re.search(r"/qr-auth/([A-Za-z0-9_\-]+)", raw)
-        if token_match:
-            target_token = token_match.group(1).strip()
-            cursor.execute(
-                f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = {ph} LIMIT 1",
-                (target_token,),
-            )
-            user = cursor.fetchone()
+    # Priority B: Tugmaan gamit ang ID at Name (Fall-back para sa lumang QR passes)
+    if not user and v_id and v_name:
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND LOWER(name) = LOWER({ph})",
+            (v_id, v_name.strip()),
+        )
+        user = cursor.fetchone()
+        # Kung nagtugma, i-sync ang bagong token
+        if user and v_token:
+            try:
+                cursor.execute(f"UPDATE volunteers SET auth_token = {ph} WHERE id = {ph}", (v_token, v_id))
+                conn.commit()
+            except Exception:
+                pass
 
-    # Hakbang 3: Hanapin kung JSON payload ang laman
-    if not user:
-        try:
-            fixed_json = raw.replace("'", '"')
-            data = json.loads(fixed_json)
-            if isinstance(data, dict):
-                v_id = data.get("id")
-                token = data.get("token")
-                v_code = data.get("code")
+    # Priority C: Tugmaan gamit ang Volunteer Code (KABS-XXXX)
+    if not user and v_code:
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph})",
+            (v_code,),
+        )
+        user = cursor.fetchone()
 
-                if v_id and token:
-                    cursor.execute(
-                        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE id = {ph} AND auth_token = {ph} LIMIT 1",
-                        (v_id, token),
-                    )
-                    user = cursor.fetchone()
+    # Priority D: Tugmaan gamit ang Token mag-isa
+    if not user and v_token:
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE auth_token = {ph}",
+            (v_token,),
+        )
+        user = cursor.fetchone()
 
-                if not user and v_code:
-                    cursor.execute(
-                        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) LIMIT 1",
-                        (str(v_code).upper().strip(),),
-                    )
-                    user = cursor.fetchone()
-        except Exception:
-            pass
+    # Priority E: Tugmaan gamit ang Name kung eksakto ang pagkakasulat
+    if not user and v_name:
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE LOWER(name) = LOWER({ph})",
+            (v_name.strip(),),
+        )
+        user = cursor.fetchone()
 
-    # Hakbang 4: Direct exact match sa token o volunteer code
+    # Priority F: Direct exact match sa buong string
     if not user:
         cursor.execute(
-            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph} LIMIT 1",
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE UPPER(volunteer_code) = UPPER({ph}) OR auth_token = {ph}",
             (raw.upper(), raw),
         )
         user = cursor.fetchone()
@@ -730,7 +757,7 @@ MAIN_TEMPLATE = """
                         if (data.success) {
                             window.location.replace('/');
                         } else {
-                            alert(data.message + "\\n\\nNabasa ng scanner: " + decodedText);
+                            alert(data.message);
                             isProcessingScan = false;
                             window.location.reload();
                         }
@@ -1471,7 +1498,7 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    # Ang nilalaman ng QR ay ang mismong volunteer code para 100% compatible sa lahat ng scanners
+    # I-save ang QR code gamit ang volunteer code
     qr_filename = f"volunteer_{v_id}.png"
     qr_path = os.path.join(QR_FOLDER, qr_filename)
     img = qrcode.make(unique_volunteer_code)
