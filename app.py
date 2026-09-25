@@ -1,5 +1,6 @@
 import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -27,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v8")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v9")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -290,6 +291,34 @@ def get_fresh_user_profile(user_id):
             "profile_pic": row[6],
         }
     return None
+
+
+def get_current_system_state_hash(user_id):
+    """Bumubuo ng fingerprint ng kasalukuyang estado para sa real-time multi-device sync."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+
+    cursor.execute(
+        f"SELECT name, contact, profile_pic FROM volunteers WHERE id = {ph}",
+        (user_id,),
+    )
+    user_state = cursor.fetchone() or ("", "", "")
+
+    cursor.execute(
+        f"SELECT id, time_in, time_out FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    )
+    duty_state = cursor.fetchone() or ("", "", "")
+
+    cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM attendance")
+    log_state = cursor.fetchone() or (0, 0)
+
+    cursor.close()
+    conn.close()
+
+    raw_signature = f"{user_state}_{duty_state}_{log_state}"
+    return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
 
 
 MAIN_TEMPLATE = """
@@ -771,7 +800,7 @@ MAIN_TEMPLATE = """
             closeManualModal();
         }
 
-        // --- LIVE RUNNING TIMER & CROSS-DEVICE SYNC ---
+        // --- LIVE RUNNING TIMER SCRIPT ---
         function startLiveDutyTimer() {
             const timeInElem = document.getElementById('session-time-in');
             const timerElem = document.getElementById('live-timer');
@@ -805,22 +834,36 @@ MAIN_TEMPLATE = """
 
             updateTimer();
             setInterval(updateTimer, 1000);
+        }
 
-            // Cross-device sync: sumilip sa server bawat 3 segundo kung nag-Time Out na sa ibang device
+        // --- GLOBAL MULTI-DEVICE REAL-TIME STATE SYNC ---
+        let currentSystemState = null;
+
+        function startMultiDeviceSynchronizer() {
             setInterval(() => {
-                fetch('/check-duty-status')
+                fetch('/sync-state')
                     .then(res => res.json())
                     .then(data => {
-                        if (data.is_clocked_in === false) {
+                        {% if user %}
+                        if (!data.logged_in) {
+                            window.location.replace('/');
+                            return;
+                        }
+                        {% endif %}
+
+                        if (currentSystemState === null) {
+                            currentSystemState = data.state_hash;
+                        } else if (currentSystemState !== data.state_hash) {
                             window.location.reload();
                         }
                     })
                     .catch(() => {});
-            }, 3000);
+            }, 2500);
         }
 
         window.addEventListener("DOMContentLoaded", () => {
             startLiveDutyTimer();
+            startMultiDeviceSynchronizer();
             {% if not user %}
             startScanner();
             {% endif %}
@@ -1168,6 +1211,25 @@ PROFILE_TEMPLATE = """
             closeSelfieModal();
             openCropperWithImage(dataUrl);
         }
+
+        // Auto-sync para sa profile page kapag may nabago sa ibang device
+        let currentProfileState = null;
+        setInterval(() => {
+            fetch('/sync-state')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.logged_in) {
+                        window.location.replace('/');
+                        return;
+                    }
+                    if (currentProfileState === null) {
+                        currentProfileState = data.state_hash;
+                    } else if (currentProfileState !== data.state_hash) {
+                        window.location.reload();
+                    }
+                })
+                .catch(() => {});
+        }, 2500);
     </script>
 </body>
 </html>
@@ -1219,26 +1281,15 @@ def index():
     )
 
 
-# REAL-TIME DUTY STATUS CHECKER PARA SA LAHAT NG DEVICES
-@app.route("/check-duty-status")
-def check_duty_status():
+# GLOBAL MULTI-DEVICE SYNCHRONIZER ENDPOINT
+@app.route("/sync-state")
+def sync_state():
     session_user = session.get("user")
     if not session_user:
-        return jsonify({"logged_in": False, "is_clocked_in": False})
+        return jsonify({"logged_in": False, "state_hash": "logged_out"})
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-
-    cursor.execute(
-        f"SELECT id FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (session_user["id"],),
-    )
-    active = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    return jsonify({"logged_in": True, "is_clocked_in": bool(active)})
+    state_hash = get_current_system_state_hash(session_user["id"])
+    return jsonify({"logged_in": True, "state_hash": state_hash})
 
 
 @app.route("/qr-auth/<token>")
