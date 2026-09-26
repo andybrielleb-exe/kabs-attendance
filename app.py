@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v12")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v13")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -44,6 +44,27 @@ USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
+
+# Tanging ang tatlong ito lamang ang may admin access para sa Delete, Status change, at Export to Excel
+ADMIN_EMAILS = [
+    "andybrielleb@gmail.com",
+    "lawrence.bln19@gmail.com",
+    "kevinlucisample@gmail.com",
+]
+
+ADMIN_CODES = [
+    "KABS-7F2D",
+    "KABS-1B57",
+    "KABS-BE81",
+]
+
+
+def is_admin_user(user_dict):
+    if not user_dict:
+        return False
+    email = str(user_dict.get("email", "")).strip().lower()
+    code = str(user_dict.get("volunteer_code", "")).strip().upper()
+    return email in ADMIN_EMAILS or code in ADMIN_CODES
 
 
 def get_db_connection():
@@ -290,7 +311,6 @@ def get_fresh_user_profile(user_id):
         conn.close()
         return None
 
-    # Suriin kung lumampas na sa 6 months (180 days) ang huling access
     status = row[7] if (len(row) > 7 and row[7]) else "Active"
     last_accessed_str = row[8] if (len(row) > 8 and row[8]) else None
     now_dt = datetime.now()
@@ -511,7 +531,7 @@ MAIN_TEMPLATE = """
             <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
-                <!-- PUNCH TIME IN / TIME OUT CARD NA MAY LIVE TIMER -->
+                <!-- PUNCH TIME IN / TIME OUT CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if active_record %}
                         <div class="flex items-center justify-between mb-2">
@@ -582,7 +602,7 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- ATTENDANCE TABLE WITH VOLUNTEER HOURS -->
+            <!-- ATTENDANCE TABLE WITH CONDITIONAL ACTION/EXPORT ONLY FOR ADMINS -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -590,20 +610,23 @@ MAIN_TEMPLATE = """
                         <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
                     </div>
                     
-                    {% if logs and logs|length > 0 %}
-                        <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                            Export to Excel
-                        </a>
-                    {% else %}
-                        <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                            Export to Excel (No Logs)
-                        </button>
+                    <!-- EXPORT TO EXCEL: ADMINS LAMANG ANG NAKAKAKITA AT NAKAKAPINDOT -->
+                    {% if is_admin %}
+                        {% if logs and logs|length > 0 %}
+                            <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Export to Excel
+                            </a>
+                        {% else %}
+                            <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Export to Excel (No Logs)
+                            </button>
+                        {% endif %}
                     {% endif %}
                 </div>
 
@@ -617,7 +640,9 @@ MAIN_TEMPLATE = """
                                 <th class="py-3 px-4">Time In</th>
                                 <th class="py-3 px-4">Time Out</th>
                                 <th class="py-3 px-4 text-center">Total Hours</th>
+                                {% if is_admin %}
                                 <th class="py-3 px-4 text-center">Action</th>
+                                {% endif %}
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -643,6 +668,9 @@ MAIN_TEMPLATE = """
                                         </span>
                                     {% endif %}
                                 </td>
+                                
+                                <!-- ACTION / DELETE COLUMN: ADMINS LANG ANG MAY DELETE BUTTON -->
+                                {% if is_admin %}
                                 <td class="py-3 px-4 text-center">
                                     {% if log[4] %}
                                         <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
@@ -656,9 +684,10 @@ MAIN_TEMPLATE = """
                                         </button>
                                     {% endif %}
                                 </td>
+                                {% endif %}
                             </tr>
                             {% else %}
-                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            <tr><td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -1089,7 +1118,9 @@ PROFILE_TEMPLATE = """
                     <p class="text-xs text-slate-500">I-manage ang iyong personal na impormasyon at larawan.</p>
                 </div>
                 
-                <!-- DROPDOWN BUTTON: ACTIVE / INACTIVE VOLUNTEER -->
+                <!-- STATUS CONTROLLER -->
+                {% if is_admin %}
+                <!-- PARA SA MGA ADMIN: DROPDOWN BUTTON NA MAPIPINDOT AT MAAARING BAGUHIN -->
                 <div class="relative inline-block text-left">
                     <button type="button" id="status-dropdown-btn" onclick="toggleStatusDropdown()" class="inline-flex items-center justify-between gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
                         {% if user.get('volunteer_status') == 'Active' %}
@@ -1117,10 +1148,25 @@ PROFILE_TEMPLATE = """
                             <span>🔴</span> Inactive Volunteer
                         </button>
                         <div class="px-3 py-1.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                            ℹ️ Awtomatikong magiging Inactive kapag hindi binuksan sa loob ng 6 na buwan.
+                            ℹ️ Admin Access: Sila lamang ang may kapangyarihang magbago ng status.
                         </div>
                     </div>
                 </div>
+                {% else %}
+                <!-- PARA SA REGULAR VOLUNTEERS: READ-ONLY STATUS BADGE (HINDI MAPIPINDOT O MABABAGO) -->
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
+                    {% if user.get('volunteer_status') == 'Active' %}
+                        bg-blue-50 text-blue-700 border-blue-200
+                    {% else %}
+                        bg-rose-50 text-rose-700 border-rose-200
+                    {% endif %}">
+                    {% if user.get('volunteer_status') == 'Active' %}
+                        🟢 ACTIVE VOLUNTEER
+                    {% else %}
+                        🔴 INACTIVE VOLUNTEER
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             <!-- PROFILE PHOTO SECTION -->
@@ -1225,9 +1271,10 @@ PROFILE_TEMPLATE = """
             localStorage.removeItem('kabs_login_timestamp');
         }
 
+        {% if is_admin %}
         function toggleStatusDropdown() {
             const menu = document.getElementById('status-dropdown-menu');
-            menu.classList.toggle('hidden');
+            if (menu) menu.classList.toggle('hidden');
         }
 
         window.addEventListener('click', (e) => {
@@ -1254,6 +1301,7 @@ PROFILE_TEMPLATE = """
             })
             .catch(() => alert("Network error updating status."));
         }
+        {% endif %}
 
         let cropper = null;
 
@@ -1429,13 +1477,15 @@ def index():
     cursor.close()
     conn.close()
 
+    is_admin = is_admin_user(user)
+
     if os.path.exists(os.path.join("templates", "index.html")):
         return render_template(
-            "index.html", user=user, logs=logs, active_record=active_record
+            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin
         )
 
     return render_template_string(
-        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record
+        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin
     )
 
 
@@ -1479,7 +1529,8 @@ def profile():
         session.pop("user", None)
         return redirect(url_for("index"))
 
-    return render_template_string(PROFILE_TEMPLATE, user=user)
+    is_admin = is_admin_user(user)
+    return render_template_string(PROFILE_TEMPLATE, user=user, is_admin=is_admin)
 
 
 @app.route("/update-volunteer-status", methods=["POST"])
@@ -1487,6 +1538,10 @@ def update_volunteer_status():
     session_user = session.get("user")
     if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
+
+    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring magbago ng status
+    if not is_admin_user(session_user):
+        return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may pahintulot na magbago ng volunteer status."})
 
     data = request.json or {}
     new_status = data.get("status")
@@ -1575,11 +1630,14 @@ def save_cropped_profile():
 
 @app.route("/export-attendance")
 def export_attendance():
-    if not session.get("user"):
-        flash(
-            "Kailangan munang mag-login para makapag-export ng attendance.",
-            "danger",
-        )
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
+        return redirect(url_for("index"))
+
+    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring mag-export ng Excel
+    if not is_admin_user(session_user):
+        flash("❌ Tanging ang SK Admin lamang ang may karapatang mag-export ng official attendance log.", "danger")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
@@ -1598,10 +1656,7 @@ def export_attendance():
     conn.close()
 
     if not records or len(records) == 0:
-        flash(
-            "❌ Walang attendance records na maaring i-export sa ngayon.",
-            "warning",
-        )
+        flash("❌ Walang attendance records na maaring i-export sa ngayon.", "warning")
         return redirect(url_for("index"))
 
     output = io.StringIO()
@@ -1633,9 +1688,7 @@ def export_attendance():
         ])
 
     csv_data = "\ufeff" + output.getvalue()
-    filename = (
-        f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    )
+    filename = f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
     return Response(
         csv_data,
@@ -1896,10 +1949,14 @@ def logout():
 
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
 def delete_log(log_id):
-    if not session.get("user"):
-        flash(
-            "Kailangan munang mag-login para makapagbura ng record.", "danger"
-        )
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
+        return redirect(url_for("index"))
+
+    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring magbura ng record
+    if not is_admin_user(session_user):
+        flash("❌ Tanging ang SK Admin lamang ang may pahintulot na magbura ng attendance records.", "danger")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
