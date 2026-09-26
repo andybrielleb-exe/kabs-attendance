@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v15")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v16")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -369,7 +369,7 @@ def get_current_system_state_hash(user_id):
         f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
         (user_id,),
     )
-    duty_state = cursor.fetchone() or ("", "", "", "")
+    duty_state = cursor.fetchone() or ("", "", "")
 
     cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
     log_state = cursor.fetchone() or (0, 0, "")
@@ -392,7 +392,6 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -510,7 +509,6 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <!-- STRICT MANUAL AGREEMENT -->
                         <div class="pt-2 border-t border-slate-100">
                             <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
                                 <div class="flex items-center justify-between">
@@ -609,92 +607,7 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- ATTENDANCE LOG: INITAAS AT INILAGAY DIRETSO SA ILALIM NG PUNCH CARD AT QR PASS -->
-            {% if is_admin %}
-            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
-                    <div>
-                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
-                    </div>
-                    
-                    {% if logs and logs|length > 0 %}
-                        <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                            Export to Excel
-                        </a>
-                    {% else %}
-                        <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                            Export to Excel (No Logs)
-                        </button>
-                    {% endif %}
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs sm:text-sm">
-                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                            <tr>
-                                <th class="py-3 px-4">Volunteer</th>
-                                <th class="py-3 px-4">Agenda</th>
-                                <th class="py-3 px-4">Task</th>
-                                <th class="py-3 px-4">Time In</th>
-                                <th class="py-3 px-4">Time Out</th>
-                                <th class="py-3 px-4 text-center">Total Hours</th>
-                                <th class="py-3 px-4 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for log in logs %}
-                            <tr>
-                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
-                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                    {{ log[4] if log[4] else 'Clocked In' }}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[6] %}
-                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
-                                            ⏱️ {{ log[6] }}
-                                        </span>
-                                    {% elif log[4] %}
-                                        <span class="text-slate-400 text-xs">N/A</span>
-                                    {% else %}
-                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
-                                            In Progress
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[4] %}
-                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                                Delete
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
-                                            Clocked In
-                                        </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- BUONG KABS VOLUNTEER MANUAL: INILAGAY SA PINAKAIBABA -->
+            <!-- BUONG KABS VOLUNTEER MANUAL -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
                     <div>
@@ -749,6 +662,96 @@ MAIN_TEMPLATE = """
                     </section>
                 </div>
             </div>
+
+            <!-- ATTENDANCE TABLE (NASA ILALIM NG MANUAL, CLICKABLE NAME PATUNGO SA PROFILE) -->
+            {% if is_admin %}
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                        <p class="text-xs text-slate-500">Pindutin ang pangalan ng volunteer para buksan ang kanyang KABS profile.</p>
+                    </div>
+                    
+                    {% if logs and logs|length > 0 %}
+                        <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel
+                        </a>
+                    {% else %}
+                        <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel (No Logs)
+                        </button>
+                    {% endif %}
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="py-3 px-4">Volunteer</th>
+                                <th class="py-3 px-4">Agenda</th>
+                                <th class="py-3 px-4">Task</th>
+                                <th class="py-3 px-4">Time In</th>
+                                <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Total Hours</th>
+                                <th class="py-3 px-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for log in logs %}
+                            <tr>
+                                <!-- CLICKABLE VOLUNTEER NAME NA MAGBUBUKAS SA KANYANG PROFILE -->
+                                <td class="py-3 px-4 font-bold">
+                                    <a href="/profile/{{ log[7] }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
+                                        <span>👤</span> {{ log[0] }}
+                                    </a>
+                                </td>
+                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                    {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[6] %}
+                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
+                                            ⏱️ {{ log[6] }}
+                                        </span>
+                                    {% elif log[4] %}
+                                        <span class="text-slate-400 text-xs">N/A</span>
+                                    {% else %}
+                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
+                                            In Progress
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[4] %}
+                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                                Delete
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                            Clocked In
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
         {% endif %}
     </main>
 
@@ -799,7 +802,7 @@ MAIN_TEMPLATE = """
                 </section>
 
                 <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
+                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
                     <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
                 </section>
 
@@ -1079,7 +1082,7 @@ PROFILE_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>KABS Profile | {{ user.get('name') }}</title>
+    <title>KABS Profile | {{ profile_user.get('name') }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -1115,19 +1118,20 @@ PROFILE_TEMPLATE = """
             <div class="flex items-center justify-between border-b pb-4">
                 <div>
                     <h2 class="text-base sm:text-lg font-extrabold text-slate-900">KABS Official Profile</h2>
-                    <p class="text-xs text-slate-500">I-manage ang iyong personal na impormasyon at larawan.</p>
+                    <p class="text-xs text-slate-500">I-manage ang impormasyon at status ng volunteer.</p>
                 </div>
                 
-                <!-- STATUS DROPDOWN BUTTON (ADMIN ONLY) -->
+                <!-- DROPDOWN BUTTON: ACTIVE / INACTIVE (ADMIN ACCESS) -->
+                {% if is_admin %}
                 <div class="relative inline-block text-left">
                     <button type="button" id="status-dropdown-btn" onclick="toggleStatusDropdown()" class="inline-flex items-center justify-between gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
-                        {% if user.get('volunteer_status') == 'Active' %}
+                        {% if profile_user.get('volunteer_status') == 'Active' %}
                             bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100
                         {% else %}
                             bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100
                         {% endif %}">
                         <span id="current-status-text">
-                            {% if user.get('volunteer_status') == 'Active' %}
+                            {% if profile_user.get('volunteer_status') == 'Active' %}
                                 🟢 ACTIVE VOLUNTEER
                             {% else %}
                                 🔴 INACTIVE VOLUNTEER
@@ -1139,24 +1143,35 @@ PROFILE_TEMPLATE = """
                     </button>
 
                     <div id="status-dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5">
-                        <button type="button" onclick="updateVolunteerStatus('Active')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-blue-50 text-blue-700 flex items-center gap-2">
+                        <button type="button" onclick="updateVolunteerStatus({{ profile_user.get('id') }}, 'Active')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-blue-50 text-blue-700 flex items-center gap-2">
                             <span>🟢</span> Active Volunteer
                         </button>
-                        <button type="button" onclick="updateVolunteerStatus('Inactive')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-700 flex items-center gap-2">
+                        <button type="button" onclick="updateVolunteerStatus({{ profile_user.get('id') }}, 'Inactive')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-700 flex items-center gap-2">
                             <span>🔴</span> Inactive Volunteer
                         </button>
-                        <div class="px-3 py-1.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                            ℹ️ Admin Control: Kayo lamang ang may karapatang magpalit ng status.
-                        </div>
                     </div>
                 </div>
+                {% else %}
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
+                    {% if profile_user.get('volunteer_status') == 'Active' %}
+                        bg-blue-50 text-blue-700 border-blue-200
+                    {% else %}
+                        bg-rose-50 text-rose-700 border-rose-200
+                    {% endif %}">
+                    {% if profile_user.get('volunteer_status') == 'Active' %}
+                        🟢 ACTIVE VOLUNTEER
+                    {% else %}
+                        🔴 INACTIVE VOLUNTEER
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             <!-- PROFILE PHOTO SECTION -->
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 text-center space-y-3">
                 <div class="relative w-28 h-28 mx-auto">
-                    {% if user.get('profile_pic') %}
-                        <img src="{{ user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
+                    {% if profile_user.get('profile_pic') %}
+                        <img src="{{ profile_user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
                     {% else %}
                         <div class="w-28 h-28 rounded-full bg-slate-200 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-3xl mx-auto">
                             👤
@@ -1164,6 +1179,7 @@ PROFILE_TEMPLATE = """
                     {% endif %}
                 </div>
 
+                {% if is_admin or session_user.get('id') == profile_user.get('id') %}
                 <div class="flex justify-center gap-2">
                     <label class="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
                         <span>📁</span> Choose Photo
@@ -1174,32 +1190,35 @@ PROFILE_TEMPLATE = """
                         <span>📸</span> Take Selfie
                     </button>
                 </div>
+                {% endif %}
             </div>
 
-            <!-- EDIT INFORMATION FORM -->
-            <form action="/edit-profile" method="POST" class="space-y-4">
+            <!-- INFORMATION FORM -->
+            <form action="/edit-profile/{{ profile_user.get('id') }}" method="POST" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Full Name</label>
-                    <input type="text" name="name" maxlength="50" required value="{{ user.get('name') }}" class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                    <input type="text" name="name" maxlength="50" required value="{{ profile_user.get('name') }}" {% if not is_admin %}disabled{% endif %} class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Email Address (Registered & Non-editable)</label>
-                    <input type="email" value="{{ user.get('email') }}" disabled class="w-full text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-slate-500 rounded-lg outline-none cursor-not-allowed">
+                    <input type="email" value="{{ profile_user.get('email') }}" disabled class="w-full text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-slate-500 rounded-lg outline-none cursor-not-allowed">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Contact Number (11 digits, numbers only)</label>
-                    <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required value="{{ user.get('contact') }}" class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                    <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required value="{{ profile_user.get('contact') }}" {% if not is_admin %}disabled{% endif %} class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Volunteer Pass Code</label>
-                    <input type="text" value="{{ user.get('volunteer_code') }}" disabled class="w-full font-mono text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-blue-600 font-bold rounded-lg outline-none cursor-not-allowed">
+                    <input type="text" value="{{ profile_user.get('volunteer_code') }}" disabled class="w-full font-mono text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-blue-600 font-bold rounded-lg outline-none cursor-not-allowed">
                 </div>
 
+                {% if is_admin %}
                 <div class="pt-4 border-t flex justify-end">
                     <button type="submit" class="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
                         Save Profile Changes
                     </button>
                 </div>
+                {% endif %}
             </form>
         </div>
     </main>
@@ -1220,7 +1239,7 @@ PROFILE_TEMPLATE = """
                 <span class="text-xs text-slate-500">I-scale para magkasya sa frame.</span>
                 <div class="flex gap-2">
                     <button type="button" onclick="closeCropperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
-                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave({{ profile_user.get('id') }})" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
                         <span>✓</span> Done
                     </button>
                 </div>
@@ -1254,6 +1273,7 @@ PROFILE_TEMPLATE = """
             localStorage.removeItem('kabs_login_timestamp');
         }
 
+        {% if is_admin %}
         function toggleStatusDropdown() {
             const menu = document.getElementById('status-dropdown-menu');
             if (menu) menu.classList.toggle('hidden');
@@ -1267,11 +1287,11 @@ PROFILE_TEMPLATE = """
             }
         });
 
-        function updateVolunteerStatus(newStatus) {
+        function updateVolunteerStatus(targetUserId, newStatus) {
             fetch('/update-volunteer-status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
+                body: JSON.stringify({ user_id: targetUserId, status: newStatus })
             })
             .then(res => res.json())
             .then(data => {
@@ -1283,6 +1303,7 @@ PROFILE_TEMPLATE = """
             })
             .catch(() => alert("Network error updating status."));
         }
+        {% endif %}
 
         let cropper = null;
 
@@ -1328,7 +1349,7 @@ PROFILE_TEMPLATE = """
             }
         }
 
-        function applyCropAndSave() {
+        function applyCropAndSave(targetUserId) {
             if (!cropper) return;
             const btn = document.getElementById('crop-done-btn');
             btn.innerText = "⏳ Saving...";
@@ -1340,7 +1361,7 @@ PROFILE_TEMPLATE = """
             fetch('/save-cropped-profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image_data: base64Data })
+                body: JSON.stringify({ user_id: targetUserId, image_data: base64Data })
             })
             .then(res => res.json())
             .then(data => {
@@ -1398,25 +1419,6 @@ PROFILE_TEMPLATE = """
             closeSelfieModal();
             openCropperWithImage(dataUrl);
         }
-
-        let currentProfileState = null;
-        setInterval(() => {
-            fetch('/sync-state')
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.logged_in) {
-                        clearLoginStorage();
-                        window.location.replace('/');
-                        return;
-                    }
-                    if (currentProfileState === null) {
-                        currentProfileState = data.state_hash;
-                    } else if (currentProfileState !== data.state_hash) {
-                        window.location.reload();
-                    }
-                })
-                .catch(() => {});
-        }, 2000);
     </script>
 </body>
 </html>
@@ -1447,7 +1449,7 @@ def index():
 
     cursor.execute(
         """
-        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours
+        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
         ORDER BY attendance.id DESC
@@ -1499,7 +1501,7 @@ def qr_direct_auth(token):
 
 
 @app.route("/profile")
-def profile():
+def profile_self():
     session_user = session.get("user")
     if not session_user:
         flash("Kailangan munang mag-login para makita ang iyong profile.", "danger")
@@ -1514,8 +1516,32 @@ def profile():
         flash("🔒 Ang Profile Page ay eksklusibo lamang para sa SK Volunteer Managers / Admins.", "warning")
         return redirect(url_for("index"))
 
-    is_admin = True
-    return render_template_string(PROFILE_TEMPLATE, user=user, is_admin=is_admin)
+    return render_template_string(
+        PROFILE_TEMPLATE, profile_user=user, session_user=user, is_admin=True
+    )
+
+
+# PROFILE VIA CLICKABLE NAME MULA SA ATTENDANCE LOG
+@app.route("/profile/<int:user_id>")
+def profile_by_id(user_id):
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        flash("🔒 Ang Profile Page ay eksklusibo lamang para sa SK Volunteer Managers / Admins.", "warning")
+        return redirect(url_for("index"))
+
+    target_user = get_fresh_user_profile(user_id)
+    if not target_user:
+        flash("Hindi natagpuan ang volunteer profile.", "danger")
+        return redirect(url_for("index"))
+
+    return render_template_string(
+        PROFILE_TEMPLATE, profile_user=target_user, session_user=current_user, is_admin=True
+    )
 
 
 @app.route("/update-volunteer-status", methods=["POST"])
@@ -1524,10 +1550,12 @@ def update_volunteer_status():
     if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
-    if not is_admin_user(session_user):
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
         return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may pahintulot na magbago ng volunteer status."})
 
     data = request.json or {}
+    target_user_id = data.get("user_id") or session_user["id"]
     new_status = data.get("status")
     if new_status not in ["Active", "Inactive"]:
         return jsonify({"success": False, "message": "Invalid status value."})
@@ -1537,7 +1565,7 @@ def update_volunteer_status():
     ph = "%s" if USE_POSTGRES else "?"
     cursor.execute(
         f"UPDATE volunteers SET volunteer_status = {ph} WHERE id = {ph}",
-        (new_status, session_user["id"]),
+        (new_status, target_user_id),
     )
     conn.commit()
     cursor.close()
@@ -1547,14 +1575,15 @@ def update_volunteer_status():
     return jsonify({"success": True})
 
 
-@app.route("/edit-profile", methods=["POST"])
-def edit_profile():
+@app.route("/edit-profile/<int:user_id>", methods=["POST"])
+def edit_profile(user_id):
     session_user = session.get("user")
     if not session_user:
         flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
         return redirect(url_for("index"))
 
-    if not is_admin_user(session_user):
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
         flash("❌ Walang pahintulot na baguhin ang profile.", "danger")
         return redirect(url_for("index"))
 
@@ -1563,28 +1592,29 @@ def edit_profile():
 
     if len(name) > 50 or len(name) < 2:
         flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
-        return redirect(url_for("profile"))
+        return redirect(url_for("profile_by_id", user_id=user_id))
 
     if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
         flash("❌ Ang contact number ay dapat 11 digits at nagsisimula sa '09'.", "danger")
-        return redirect(url_for("profile"))
+        return redirect(url_for("profile_by_id", user_id=user_id))
 
     conn = get_db_connection()
     cursor = conn.cursor()
     ph = "%s" if USE_POSTGRES else "?"
     cursor.execute(
         f"UPDATE volunteers SET name = {ph}, contact = {ph} WHERE id = {ph}",
-        (name, contact, session_user["id"]),
+        (name, contact, user_id),
     )
     conn.commit()
     cursor.close()
     conn.close()
 
-    session["user"]["name"] = name
-    session.modified = True
+    if session_user["id"] == user_id:
+        session["user"]["name"] = name
+        session.modified = True
 
-    flash("✅ Matagumpay na na-update ang iyong KABS Profile information!", "success")
-    return redirect(url_for("profile"))
+    flash("✅ Matagumpay na na-update ang KABS Profile information!", "success")
+    return redirect(url_for("profile_by_id", user_id=user_id))
 
 
 @app.route("/save-cropped-profile", methods=["POST"])
@@ -1593,10 +1623,13 @@ def save_cropped_profile():
     if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
-    if not is_admin_user(session_user):
+    current_user = get_fresh_user_profile(session_user["id"])
+    data = request.json or {}
+    target_user_id = data.get("user_id") or session_user["id"]
+
+    if not is_admin_user(current_user) and session_user["id"] != target_user_id:
         return jsonify({"success": False, "message": "Walang pahintulot."})
 
-    data = request.json or {}
     image_data = data.get("image_data")
     if not image_data or not image_data.startswith("data:image"):
         return jsonify({"success": False, "message": "Walang natanggap na cropped photo."})
@@ -1607,13 +1640,13 @@ def save_cropped_profile():
         ph = "%s" if USE_POSTGRES else "?"
         cursor.execute(
             f"UPDATE volunteers SET profile_pic = {ph} WHERE id = {ph}",
-            (image_data, session_user["id"]),
+            (image_data, target_user_id),
         )
         conn.commit()
         cursor.close()
         conn.close()
 
-        flash("✅ Matagumpay na na-crop at na-save ang iyong Profile Picture!", "success")
+        flash("✅ Matagumpay na na-crop at na-save ang Profile Picture!", "success")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
@@ -1626,7 +1659,8 @@ def export_attendance():
         flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
         return redirect(url_for("index"))
 
-    if not is_admin_user(session_user):
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
         flash("❌ Tanging ang SK Admin lamang ang may karapatang mag-export ng official attendance log.", "danger")
         return redirect(url_for("index"))
 
@@ -1945,7 +1979,8 @@ def delete_log(log_id):
         flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
         return redirect(url_for("index"))
 
-    if not is_admin_user(session_user):
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
         flash("❌ Tanging ang SK Admin lamang ang may pahintulot na magbura ng attendance records.", "danger")
         return redirect(url_for("index"))
 
