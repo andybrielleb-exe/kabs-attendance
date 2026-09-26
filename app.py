@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v14")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v15")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -45,7 +45,6 @@ USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
-# Tanging ang tatlong ito lamang ang may access sa KABS Profile, Attendance Log, Delete, Status change, at Export
 ADMIN_EMAILS = [
     "andybrielleb@gmail.com",
     "lawrence.bln19@gmail.com",
@@ -367,13 +366,13 @@ def get_current_system_state_hash(user_id):
     user_state = cursor.fetchone() or ("", "", "", "")
 
     cursor.execute(
-        f"SELECT id, time_in, time_out FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
         (user_id,),
     )
-    duty_state = cursor.fetchone() or ("", "", "")
+    duty_state = cursor.fetchone() or ("", "", "", "")
 
-    cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM attendance")
-    log_state = cursor.fetchone() or (0, 0)
+    cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
+    log_state = cursor.fetchone() or (0, 0, "")
 
     cursor.close()
     conn.close()
@@ -406,7 +405,6 @@ MAIN_TEMPLATE = """
 
             <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
                 {% if user %}
-                    <!-- ADMIN ONLY PROFILE BUTTON -->
                     {% if is_admin %}
                     <a href="/profile" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
                         {% if user.get('profile_pic') %}
@@ -422,7 +420,6 @@ MAIN_TEMPLATE = """
                         {% endif %}
                     </a>
                     {% else %}
-                    <!-- REGULAR USER DISPLAY -->
                     <div class="flex items-center gap-1.5 bg-slate-800/80 border border-slate-800 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-300">
                         <span class="font-semibold text-white max-w-[90px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">{{ user.get('name') }}</span>
                         <span class="text-[9px] bg-emerald-600/30 text-emerald-300 px-1 py-0.5 rounded font-mono">Volunteer</span>
@@ -612,63 +609,7 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- BUONG KABS VOLUNTEER MANUAL -->
-            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
-                    <div>
-                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                        <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
-                    </div>
-                </div>
-
-                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
-                        </ul>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
-                            </div>
-                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
-                            </div>
-                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
-                    </section>
-
-                    <section class="space-y-2 pb-2">
-                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
-                    </section>
-                </div>
-            </div>
-
-            <!-- ATTENDANCE TABLE: NASA ILALIM NG MANUAL AT ADMINS LAMANG ANG NAKAKAKITA -->
+            <!-- ATTENDANCE LOG: INITAAS AT INILAGAY DIRETSO SA ILALIM NG PUNCH CARD AT QR PASS -->
             {% if is_admin %}
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
@@ -752,6 +693,62 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
             {% endif %}
+
+            <!-- BUONG KABS VOLUNTEER MANUAL: INILAGAY SA PINAKAIBABA -->
+            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
+                    <div>
+                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                        <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
+                    </div>
+                </div>
+
+                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                    </section>
+
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                        <ul class="list-disc pl-5 space-y-1">
+                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                        </ul>
+                    </section>
+
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
+                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                            </div>
+                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
+                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                            </div>
+                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
+                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="space-y-2 border-b pb-4">
+                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
+                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                    </section>
+
+                    <section class="space-y-2 pb-2">
+                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
+                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                    </section>
+                </div>
+            </div>
         {% endif %}
     </main>
 
@@ -980,7 +977,7 @@ MAIN_TEMPLATE = """
                         }
                     })
                     .catch(() => {});
-            }, 2500);
+            }, 2000);
         }
 
         window.addEventListener("DOMContentLoaded", () => {
@@ -1121,7 +1118,7 @@ PROFILE_TEMPLATE = """
                     <p class="text-xs text-slate-500">I-manage ang iyong personal na impormasyon at larawan.</p>
                 </div>
                 
-                <!-- DROPDOWN BUTTON PARA SA STATUS (ADMIN ACCESS ONLY) -->
+                <!-- STATUS DROPDOWN BUTTON (ADMIN ONLY) -->
                 <div class="relative inline-block text-left">
                     <button type="button" id="status-dropdown-btn" onclick="toggleStatusDropdown()" class="inline-flex items-center justify-between gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
                         {% if user.get('volunteer_status') == 'Active' %}
@@ -1419,7 +1416,7 @@ PROFILE_TEMPLATE = """
                     }
                 })
                 .catch(() => {});
-        }, 2500);
+        }, 2000);
     </script>
 </body>
 </html>
@@ -1513,7 +1510,6 @@ def profile():
         session.pop("user", None)
         return redirect(url_for("index"))
 
-    # Tanging tatlong admin lamang ang pinapayagang magbukas ng Profile Page
     if not is_admin_user(user):
         flash("🔒 Ang Profile Page ay eksklusibo lamang para sa SK Volunteer Managers / Admins.", "warning")
         return redirect(url_for("index"))
@@ -1812,6 +1808,7 @@ def log_self_attendance():
             f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
             (now, duration_str, rec_id),
         )
+        conn.commit()
         flash(
             f"🔴 TIME OUT recorded for {session_user.get('name')} ({now}) | Total Hours: {duration_str}",
             "success",
@@ -1826,12 +1823,12 @@ def log_self_attendance():
             f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
             (session_user["id"], agenda_val, task_val, now),
         )
+        conn.commit()
         flash(
             f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now})",
             "success",
         )
 
-    conn.commit()
     cursor.close()
     conn.close()
 
