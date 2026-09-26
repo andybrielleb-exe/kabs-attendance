@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v13")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v14")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -45,7 +45,7 @@ USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
-# Tanging ang tatlong ito lamang ang may admin access para sa Delete, Status change, at Export to Excel
+# Tanging ang tatlong ito lamang ang may access sa KABS Profile, Attendance Log, Delete, Status change, at Export
 ADMIN_EMAILS = [
     "andybrielleb@gmail.com",
     "lawrence.bln19@gmail.com",
@@ -406,22 +406,32 @@ MAIN_TEMPLATE = """
 
             <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
                 {% if user %}
-                <a href="/profile" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
-                    {% if user.get('profile_pic') %}
-                        <img src="{{ user.get('profile_pic') }}" class="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover flex-shrink-0">
+                    <!-- ADMIN ONLY PROFILE BUTTON -->
+                    {% if is_admin %}
+                    <a href="/profile" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
+                        {% if user.get('profile_pic') %}
+                            <img src="{{ user.get('profile_pic') }}" class="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover flex-shrink-0">
+                        {% else %}
+                            <span class="text-xs">👤</span>
+                        {% endif %}
+                        <span class="font-semibold text-white max-w-[75px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">{{ user.get('name') }}</span>
+                        {% if user.get('volunteer_status') == 'Active' %}
+                            <span class="text-[9px] bg-emerald-600/40 text-emerald-300 px-1 py-0.5 rounded font-mono">Active</span>
+                        {% else %}
+                            <span class="text-[9px] bg-rose-600/40 text-rose-300 px-1 py-0.5 rounded font-mono">Inactive</span>
+                        {% endif %}
+                    </a>
                     {% else %}
-                        <span class="text-xs">👤</span>
+                    <!-- REGULAR USER DISPLAY -->
+                    <div class="flex items-center gap-1.5 bg-slate-800/80 border border-slate-800 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-300">
+                        <span class="font-semibold text-white max-w-[90px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">{{ user.get('name') }}</span>
+                        <span class="text-[9px] bg-emerald-600/30 text-emerald-300 px-1 py-0.5 rounded font-mono">Volunteer</span>
+                    </div>
                     {% endif %}
-                    <span class="font-semibold text-white max-w-[75px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">{{ user.get('name') }}</span>
-                    {% if user.get('volunteer_status') == 'Active' %}
-                        <span class="text-[9px] bg-emerald-600/40 text-emerald-300 px-1 py-0.5 rounded font-mono">Active</span>
-                    {% else %}
-                        <span class="text-[9px] bg-rose-600/40 text-rose-300 px-1 py-0.5 rounded font-mono">Inactive</span>
-                    {% endif %}
-                </a>
-                <a href="/logout" onclick="clearLoginStorage();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-lg transition-all flex-shrink-0">
-                    Log Out
-                </a>
+
+                    <a href="/logout" onclick="clearLoginStorage();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-lg transition-all flex-shrink-0">
+                        Log Out
+                    </a>
                 {% endif %}
             </div>
         </div>
@@ -602,99 +612,7 @@ MAIN_TEMPLATE = """
 
             </div>
 
-            <!-- ATTENDANCE TABLE WITH CONDITIONAL ACTION/EXPORT ONLY FOR ADMINS -->
-            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
-                    <div>
-                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
-                    </div>
-                    
-                    <!-- EXPORT TO EXCEL: ADMINS LAMANG ANG NAKAKAKITA AT NAKAKAPINDOT -->
-                    {% if is_admin %}
-                        {% if logs and logs|length > 0 %}
-                            <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                Export to Excel
-                            </a>
-                        {% else %}
-                            <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                Export to Excel (No Logs)
-                            </button>
-                        {% endif %}
-                    {% endif %}
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs sm:text-sm">
-                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                            <tr>
-                                <th class="py-3 px-4">Volunteer</th>
-                                <th class="py-3 px-4">Agenda</th>
-                                <th class="py-3 px-4">Task</th>
-                                <th class="py-3 px-4">Time In</th>
-                                <th class="py-3 px-4">Time Out</th>
-                                <th class="py-3 px-4 text-center">Total Hours</th>
-                                {% if is_admin %}
-                                <th class="py-3 px-4 text-center">Action</th>
-                                {% endif %}
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for log in logs %}
-                            <tr>
-                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
-                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                    {{ log[4] if log[4] else 'Clocked In' }}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[6] %}
-                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
-                                            ⏱️ {{ log[6] }}
-                                        </span>
-                                    {% elif log[4] %}
-                                        <span class="text-slate-400 text-xs">N/A</span>
-                                    {% else %}
-                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
-                                            In Progress
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                
-                                <!-- ACTION / DELETE COLUMN: ADMINS LANG ANG MAY DELETE BUTTON -->
-                                {% if is_admin %}
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[4] %}
-                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                                Delete
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
-                                            Clocked In
-                                        </button>
-                                    {% endif %}
-                                </td>
-                                {% endif %}
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- BUONG KABS VOLUNTEER MANUAL SA ILALIM NG ATTENDANCE LOG -->
+            <!-- BUONG KABS VOLUNTEER MANUAL -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
                     <div>
@@ -703,7 +621,7 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
 
-                <div class="p-6 max-h-[600px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
                         <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
@@ -749,6 +667,91 @@ MAIN_TEMPLATE = """
                     </section>
                 </div>
             </div>
+
+            <!-- ATTENDANCE TABLE: NASA ILALIM NG MANUAL AT ADMINS LAMANG ANG NAKAKAKITA -->
+            {% if is_admin %}
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
+                    </div>
+                    
+                    {% if logs and logs|length > 0 %}
+                        <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel
+                        </a>
+                    {% else %}
+                        <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Export to Excel (No Logs)
+                        </button>
+                    {% endif %}
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="py-3 px-4">Volunteer</th>
+                                <th class="py-3 px-4">Agenda</th>
+                                <th class="py-3 px-4">Task</th>
+                                <th class="py-3 px-4">Time In</th>
+                                <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Total Hours</th>
+                                <th class="py-3 px-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for log in logs %}
+                            <tr>
+                                <td class="py-3 px-4 font-bold">{{ log[0] }}</td>
+                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                    {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[6] %}
+                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
+                                            ⏱️ {{ log[6] }}
+                                        </span>
+                                    {% elif log[4] %}
+                                        <span class="text-slate-400 text-xs">N/A</span>
+                                    {% else %}
+                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
+                                            In Progress
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[4] %}
+                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                                Delete
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                            Clocked In
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
         {% endif %}
     </main>
 
@@ -1118,9 +1121,7 @@ PROFILE_TEMPLATE = """
                     <p class="text-xs text-slate-500">I-manage ang iyong personal na impormasyon at larawan.</p>
                 </div>
                 
-                <!-- STATUS CONTROLLER -->
-                {% if is_admin %}
-                <!-- PARA SA MGA ADMIN: DROPDOWN BUTTON NA MAPIPINDOT AT MAAARING BAGUHIN -->
+                <!-- DROPDOWN BUTTON PARA SA STATUS (ADMIN ACCESS ONLY) -->
                 <div class="relative inline-block text-left">
                     <button type="button" id="status-dropdown-btn" onclick="toggleStatusDropdown()" class="inline-flex items-center justify-between gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
                         {% if user.get('volunteer_status') == 'Active' %}
@@ -1148,25 +1149,10 @@ PROFILE_TEMPLATE = """
                             <span>🔴</span> Inactive Volunteer
                         </button>
                         <div class="px-3 py-1.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                            ℹ️ Admin Access: Sila lamang ang may kapangyarihang magbago ng status.
+                            ℹ️ Admin Control: Kayo lamang ang may karapatang magpalit ng status.
                         </div>
                     </div>
                 </div>
-                {% else %}
-                <!-- PARA SA REGULAR VOLUNTEERS: READ-ONLY STATUS BADGE (HINDI MAPIPINDOT O MABABAGO) -->
-                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
-                    {% if user.get('volunteer_status') == 'Active' %}
-                        bg-blue-50 text-blue-700 border-blue-200
-                    {% else %}
-                        bg-rose-50 text-rose-700 border-rose-200
-                    {% endif %}">
-                    {% if user.get('volunteer_status') == 'Active' %}
-                        🟢 ACTIVE VOLUNTEER
-                    {% else %}
-                        🔴 INACTIVE VOLUNTEER
-                    {% endif %}
-                </div>
-                {% endif %}
             </div>
 
             <!-- PROFILE PHOTO SECTION -->
@@ -1271,7 +1257,6 @@ PROFILE_TEMPLATE = """
             localStorage.removeItem('kabs_login_timestamp');
         }
 
-        {% if is_admin %}
         function toggleStatusDropdown() {
             const menu = document.getElementById('status-dropdown-menu');
             if (menu) menu.classList.toggle('hidden');
@@ -1301,7 +1286,6 @@ PROFILE_TEMPLATE = """
             })
             .catch(() => alert("Network error updating status."));
         }
-        {% endif %}
 
         let cropper = null;
 
@@ -1529,7 +1513,12 @@ def profile():
         session.pop("user", None)
         return redirect(url_for("index"))
 
-    is_admin = is_admin_user(user)
+    # Tanging tatlong admin lamang ang pinapayagang magbukas ng Profile Page
+    if not is_admin_user(user):
+        flash("🔒 Ang Profile Page ay eksklusibo lamang para sa SK Volunteer Managers / Admins.", "warning")
+        return redirect(url_for("index"))
+
+    is_admin = True
     return render_template_string(PROFILE_TEMPLATE, user=user, is_admin=is_admin)
 
 
@@ -1539,7 +1528,6 @@ def update_volunteer_status():
     if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
-    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring magbago ng status
     if not is_admin_user(session_user):
         return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may pahintulot na magbago ng volunteer status."})
 
@@ -1568,6 +1556,10 @@ def edit_profile():
     session_user = session.get("user")
     if not session_user:
         flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
+        return redirect(url_for("index"))
+
+    if not is_admin_user(session_user):
+        flash("❌ Walang pahintulot na baguhin ang profile.", "danger")
         return redirect(url_for("index"))
 
     name = request.form.get("name", "").strip()
@@ -1605,6 +1597,9 @@ def save_cropped_profile():
     if not session_user:
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
+    if not is_admin_user(session_user):
+        return jsonify({"success": False, "message": "Walang pahintulot."})
+
     data = request.json or {}
     image_data = data.get("image_data")
     if not image_data or not image_data.startswith("data:image"):
@@ -1635,7 +1630,6 @@ def export_attendance():
         flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
         return redirect(url_for("index"))
 
-    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring mag-export ng Excel
     if not is_admin_user(session_user):
         flash("❌ Tanging ang SK Admin lamang ang may karapatang mag-export ng official attendance log.", "danger")
         return redirect(url_for("index"))
@@ -1954,7 +1948,6 @@ def delete_log(log_id):
         flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
         return redirect(url_for("index"))
 
-    # Proteksyon: Tanging ang tatlong Admin lamang ang maaaring magbura ng record
     if not is_admin_user(session_user):
         flash("❌ Tanging ang SK Admin lamang ang may pahintulot na magbura ng attendance records.", "danger")
         return redirect(url_for("index"))
