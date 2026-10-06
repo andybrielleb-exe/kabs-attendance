@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v20")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v21")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -366,17 +366,21 @@ def get_current_system_state_hash(user_id):
     cursor = conn.cursor()
     ph = "%s" if USE_POSTGRES else "?"
 
-    cursor.execute(
-        f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
-        (user_id,),
-    )
-    user_state = cursor.fetchone() or ("", "", "", "", "")
+    user_state = ("", "", "", "", "")
+    duty_state = ("", "", "", "")
 
-    cursor.execute(
-        f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
-        (user_id,),
-    )
-    duty_state = cursor.fetchone() or ("", "", "", "")
+    if user_id:
+        cursor.execute(
+            f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
+            (user_id,),
+        )
+        user_state = cursor.fetchone() or ("", "", "", "", "")
+
+        cursor.execute(
+            f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        )
+        duty_state = cursor.fetchone() or ("", "", "", "")
 
     cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
     log_state = cursor.fetchone() or (0, 0, "")
@@ -399,6 +403,7 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
+    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -457,7 +462,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW -->
+            <!-- LOGGED OUT VIEW: LOGIN AT REGISTRATION -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -516,7 +521,6 @@ MAIN_TEMPLATE = """
                             <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required placeholder="09xxxxxxxxx" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
                         </div>
 
-                        <!-- STRICT MANUAL AGREEMENT -->
                         <div class="pt-2 border-t border-slate-100">
                             <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-2">
                                 <div class="flex items-center justify-between">
@@ -541,9 +545,8 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
+            <!-- LOGGED IN VIEW: PUNCH CARD AT PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if active_record %}
                         <div class="flex items-center justify-between mb-2">
@@ -610,74 +613,19 @@ MAIN_TEMPLATE = """
                         <a href="/static/qrcodes/{{ user.get('qr_code') }}" download class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
                     </div>
                 </div>
-
             </div>
+        {% endif %}
 
-            <!-- BUONG KABS VOLUNTEER MANUAL -->
-            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
-                    <div>
-                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                        <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
-                    </div>
+        <!-- ATTENDANCE LOG: INIANGAT SA TAAS (MAKIKITA NG LAHAT: LOGGED IN AT LOGGED OUT) -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
+                <div>
+                    <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                    <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
                 </div>
-
-                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
-                        </ul>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
-                            </div>
-                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
-                            </div>
-                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
-                    </section>
-
-                    <section class="space-y-2 pb-2">
-                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
-                    </section>
-                </div>
-            </div>
-
-            <!-- ATTENDANCE TABLE (CLICKABLE VOLUNTEER NAME) -->
-            {% if is_admin %}
-            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
-                    <div>
-                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Pindutin ang pangalan ng volunteer para buksan ang profile.</p>
-                    </div>
-                    
+                
+                <!-- EXPORT BUTTON: PARA SA ADMINS LANG -->
+                {% if is_admin %}
                     {% if logs and logs|length > 0 %}
                         <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -693,74 +641,141 @@ MAIN_TEMPLATE = """
                             Export to Excel (No Logs)
                         </button>
                     {% endif %}
-                </div>
+                {% endif %}
+            </div>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs sm:text-sm">
-                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                            <tr>
-                                <th class="py-3 px-4">Volunteer</th>
-                                <th class="py-3 px-4">Agenda</th>
-                                <th class="py-3 px-4">Task</th>
-                                <th class="py-3 px-4">Time In</th>
-                                <th class="py-3 px-4">Time Out</th>
-                                <th class="py-3 px-4 text-center">Total Hours</th>
-                                <th class="py-3 px-4 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            {% for log in logs %}
-                            <tr>
-                                <td class="py-3 px-4 font-bold">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs sm:text-sm">
+                    <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                        <tr>
+                            <th class="py-3 px-4">Volunteer</th>
+                            <th class="py-3 px-4">Agenda</th>
+                            <th class="py-3 px-4">Task</th>
+                            <th class="py-3 px-4">Time In</th>
+                            <th class="py-3 px-4">Time Out</th>
+                            <th class="py-3 px-4 text-center">Total Hours</th>
+                            {% if is_admin %}
+                            <th class="py-3 px-4 text-center">Action</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for log in logs %}
+                        <tr>
+                            <!-- PANGALAN NG VOLUNTEER: CLICKABLE PROFILE PARA SA ADMIN LANG, PLAIN TEXT PARA SA IBA -->
+                            <td class="py-3 px-4 font-bold">
+                                {% if is_admin %}
                                     <a href="/profile/{{ log[7] }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
                                         <span>👤</span> {{ log[0] }}
                                     </a>
-                                </td>
-                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                    {{ log[4] if log[4] else 'Clocked In' }}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[6] %}
-                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
-                                            ⏱️ {{ log[6] }}
-                                        </span>
-                                    {% elif log[4] %}
-                                        <span class="text-slate-400 text-xs">N/A</span>
-                                    {% else %}
-                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
-                                            In Progress
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if log[4] %}
-                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                                Delete
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
-                                            Clocked In
+                                {% else %}
+                                    <span class="text-slate-800 flex items-center gap-1">
+                                        <span>👤</span> {{ log[0] }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                            <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                            <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
+                            <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                {{ log[4] if log[4] else 'Clocked In' }}
+                            </td>
+                            <td class="py-3 px-4 text-center">
+                                {% if log[6] %}
+                                    <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
+                                        ⏱️ {{ log[6] }}
+                                    </span>
+                                {% elif log[4] %}
+                                    <span class="text-slate-400 text-xs">N/A</span>
+                                {% else %}
+                                    <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
+                                        In Progress
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <!-- DELETE BUTTON: PARA SA ADMIN LANG -->
+                            {% if is_admin %}
+                            <td class="py-3 px-4 text-center">
+                                {% if log[4] %}
+                                    <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
+                                        <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                            Delete
                                         </button>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="7" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                    </form>
+                                {% else %}
+                                    <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                        Clocked In
+                                    </button>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- BUONG KABS VOLUNTEER MANUAL: NASA PINAKAIBABA -->
+        <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
+                <div>
+                    <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                    <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
                 </div>
             </div>
-            {% endif %}
-        {% endif %}
+
+            <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                </section>
+
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                    </ul>
+                </section>
+
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
+                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                        </div>
+                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
+                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                        </div>
+                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
+                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
+                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                </section>
+
+                <section class="space-y-2 pb-2">
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
+                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                </section>
+            </div>
+        </div>
     </main>
 
-    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION (RESTORED FULL CONTENT & SCROLL AUTO-UNLOCK) -->
+    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION (WITH AUTO-UNLOCK) -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
@@ -853,10 +868,10 @@ MAIN_TEMPLATE = """
             modal.classList.remove('hidden');
             setTimeout(() => {
                 const el = document.getElementById('manual-modal-scroll');
-                if (el && el.scrollHeight <= el.clientHeight + 20) {
+                if (el && el.scrollHeight <= el.clientHeight + 25) {
                     unlockManualButton();
                 }
-            }, 150);
+            }, 200);
         }
 
         function closeManualModal() {
@@ -881,7 +896,7 @@ MAIN_TEMPLATE = """
         }
 
         function checkManualModalScroll(element) {
-            if (element.scrollHeight - element.scrollTop <= element.clientHeight + 35) {
+            if (element.scrollHeight - element.scrollTop <= element.clientHeight + 40) {
                 unlockManualButton();
             }
         }
@@ -1566,7 +1581,8 @@ def index():
 def sync_state():
     session_user = session.get("user")
     if not session_user:
-        return jsonify({"logged_in": False, "state_hash": "logged_out"})
+        state_hash = get_current_system_state_hash(None)
+        return jsonify({"logged_in": False, "state_hash": state_hash})
 
     state_hash = get_current_system_state_hash(session_user["id"])
     return jsonify({"logged_in": True, "state_hash": state_hash})
