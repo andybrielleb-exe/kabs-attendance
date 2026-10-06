@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v17")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v18")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -45,7 +45,6 @@ USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
 
-# Tanging ang tatlong ito lamang ang may Admin rights
 ADMIN_EMAILS = [
     "andybrielleb@gmail.com",
     "lawrence.bln19@gmail.com",
@@ -112,7 +111,7 @@ def init_db():
                 volunteer_type VARCHAR(25) DEFAULT 'Auxiliary',
                 last_accessed TEXT
             );
-        """
+            """
         )
         cursor.execute(
             """
@@ -125,7 +124,7 @@ def init_db():
                 time_out TEXT,
                 total_hours TEXT
             );
-        """
+            """
         )
         for col, col_type in [
             ("profile_pic", "TEXT"),
@@ -164,8 +163,8 @@ def init_db():
                 volunteer_status TEXT DEFAULT 'Active',
                 volunteer_type TEXT DEFAULT 'Auxiliary',
                 last_accessed TEXT
-            )
-        """
+            );
+            """
         )
         cursor.execute(
             """
@@ -178,8 +177,8 @@ def init_db():
                 time_out TEXT,
                 total_hours TEXT,
                 FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
-            )
-        """
+            );
+            """
         )
         cursor.execute("PRAGMA table_info(volunteers)")
         v_cols = [c[1] for c in cursor.fetchall()]
@@ -400,7 +399,6 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -413,7 +411,6 @@ MAIN_TEMPLATE = """
 
             <div class="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
                 {% if user %}
-                    <!-- LAHAT NG NAKA-LOGIN AY NAKAKAPASOK SA KANILANG PROFILE -->
                     <a href="/profile" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg text-slate-200 transition-all">
                         {% if user.get('profile_pic') %}
                             <img src="{{ user.get('profile_pic') }}" class="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover flex-shrink-0">
@@ -422,14 +419,12 @@ MAIN_TEMPLATE = """
                         {% endif %}
                         <span class="font-semibold text-white max-w-[75px] sm:max-w-[130px] truncate text-[11px] sm:text-xs">{{ user.get('name') }}</span>
                         
-                        <!-- CORE O AUXILIARY BADGE -->
                         {% if user.get('volunteer_type') == 'Core' %}
                             <span class="text-[9px] bg-purple-600/40 text-purple-300 px-1 py-0.5 rounded font-mono font-bold">Core</span>
                         {% else %}
                             <span class="text-[9px] bg-sky-600/40 text-sky-300 px-1 py-0.5 rounded font-mono">Aux</span>
                         {% endif %}
 
-                        <!-- STATUS BADGE -->
                         {% if user.get('volunteer_status') == 'Active' %}
                             <span class="text-[9px] bg-emerald-600/40 text-emerald-300 px-1 py-0.5 rounded font-mono">Active</span>
                         {% else %}
@@ -548,7 +543,6 @@ MAIN_TEMPLATE = """
             <!-- DASHBOARD: PUNCH ATTENDANCE AT OFFICIAL PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 
-                <!-- PUNCH TIME IN / TIME OUT CARD -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if active_record %}
                         <div class="flex items-center justify-between mb-2">
@@ -605,7 +599,6 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
-                <!-- OFFICIAL QR CODE PASS -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
@@ -1085,4 +1078,615 @@ PROFILE_TEMPLATE = """
             {% for category, message in messages %}
               <div class="rounded-xl p-4 text-sm font-medium border shadow-sm
                   {% if category == 'success' %} bg-emerald-50 text-emerald-800 border-emerald-200
-                  {% elif category == 'danger' %} bg-rose-50 text-rose-800 border-
+                  {% elif category == 'danger' %} bg-rose-50 text-rose-800 border-rose-200
+                  {% else %} bg-amber-50 text-amber-800 border-amber-200 {% endif %}">
+                  {{ message | safe }}
+              </div>
+            {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div class="flex items-center justify-between border-b pb-4 flex-wrap gap-2">
+                <div>
+                    <h2 class="text-base sm:text-lg font-extrabold text-slate-900">KABS Official Profile</h2>
+                    <p class="text-xs text-slate-500">Impormasyon at official standing ng KABS volunteer.</p>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    {% if is_admin %}
+                    <div class="relative inline-block text-left">
+                        <button type="button" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
+                            {% if profile_user.get('volunteer_type') == 'Core' %}
+                                bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100
+                            {% else %}
+                                bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100
+                            {% endif %}">
+                            <span>
+                                {% if profile_user.get('volunteer_type') == 'Core' %}
+                                    ⭐ CORE VOLUNTEER
+                                {% else %}
+                                    🤝 AUXILIARY VOLUNTEER
+                                {% endif %}
+                            </span>
+                            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div id="type-dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5">
+                            <button type="button" onclick="updateClassification({{ profile_user.get('id') }}, 'Core')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-purple-50 text-purple-700 flex items-center gap-2">
+                                <span>⭐</span> Core Volunteer
+                            </button>
+                            <button type="button" onclick="updateClassification({{ profile_user.get('id') }}, 'Auxiliary')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-sky-50 text-sky-700 flex items-center gap-2">
+                                <span>🤝</span> Auxiliary Volunteer
+                            </button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
+                        {% if profile_user.get('volunteer_type') == 'Core' %}
+                            bg-purple-50 text-purple-700 border-purple-200
+                        {% else %}
+                            bg-sky-50 text-sky-700 border-sky-200
+                        {% endif %}">
+                        {% if profile_user.get('volunteer_type') == 'Core' %}
+                            ⭐ CORE VOLUNTEER
+                        {% else %}
+                            🤝 AUXILIARY VOLUNTEER
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if is_admin %}
+                    <div class="relative inline-block text-left">
+                        <button type="button" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
+                            {% if profile_user.get('volunteer_status') == 'Active' %}
+                                bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100
+                            {% else %}
+                                bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100
+                            {% endif %}">
+                            <span>
+                                {% if profile_user.get('volunteer_status') == 'Active' %}
+                                    🟢 ACTIVE
+                                {% else %}
+                                    🔴 INACTIVE
+                                {% endif %}
+                            </span>
+                            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div id="status-dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5">
+                            <button type="button" onclick="updateVolunteerStatus({{ profile_user.get('id') }}, 'Active')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2">
+                                <span>🟢</span> Active Volunteer
+                            </button>
+                            <button type="button" onclick="updateVolunteerStatus({{ profile_user.get('id') }}, 'Inactive')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-700 flex items-center gap-2">
+                                <span>🔴</span> Inactive Volunteer
+                            </button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
+                        {% if profile_user.get('volunteer_status') == 'Active' %}
+                            bg-emerald-50 text-emerald-700 border-emerald-200
+                        {% else %}
+                            bg-rose-50 text-rose-700 border-rose-200
+                        {% endif %}">
+                        {% if profile_user.get('volunteer_status') == 'Active' %}
+                            🟢 ACTIVE
+                        {% else %}
+                            🔴 INACTIVE
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- PROFILE PHOTO SECTION -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 text-center space-y-3">
+                <div class="relative w-28 h-28 mx-auto">
+                    {% if profile_user.get('profile_pic') %}
+                        <img src="{{ profile_user.get('profile_pic') }}" alt="Profile" class="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md mx-auto">
+                    {% else %}
+                        <div class="w-28 h-28 rounded-full bg-slate-200 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-3xl mx-auto">
+                            👤
+                        </div>
+                    {% endif %}
+                </div>
+
+                {% if is_owner %}
+                <div class="flex justify-center gap-2">
+                    <label class="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
+                        <span>📁</span> Choose Photo
+                        <input type="file" id="choose-photo-input" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+                    </label>
+
+                    <button type="button" onclick="openSelfieModal()" class="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-all flex items-center gap-1.5 shadow-sm">
+                        <span>📸</span> Take Selfie
+                    </button>
+                </div>
+                {% else %}
+                <p class="text-[11px] text-slate-400 italic">Ang may-ari lamang ng account ang may karapatang magpalit ng sariling larawan.</p>
+                {% endif %}
+            </div>
+
+            <!-- EDIT INFORMATION FORM -->
+            <form action="/edit-profile/{{ profile_user.get('id') }}" method="POST" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Full Name</label>
+                    <input type="text" name="name" maxlength="50" required value="{{ profile_user.get('name') }}" {% if not is_owner %}disabled{% endif %} class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg {% if is_owner %}focus:ring-2 focus:ring-blue-600 outline-none{% else %}bg-slate-100 text-slate-600 cursor-not-allowed{% endif %}">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Email Address (Registered & Non-editable)</label>
+                    <input type="email" value="{{ profile_user.get('email') }}" disabled class="w-full text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-slate-500 rounded-lg outline-none cursor-not-allowed">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Contact Number (11 digits, numbers only)</label>
+                    <input type="tel" name="contact" maxlength="11" minlength="11" pattern="09[0-9]{9}" inputmode="numeric" oninput="this.value = this.value.replace(/[^0-9]/g, '')" required value="{{ profile_user.get('contact') }}" {% if not is_owner %}disabled{% endif %} class="w-full text-sm py-2.5 px-3 border border-slate-300 rounded-lg {% if is_owner %}focus:ring-2 focus:ring-blue-600 outline-none{% else %}bg-slate-100 text-slate-600 cursor-not-allowed{% endif %}">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Volunteer Pass Code</label>
+                    <input type="text" value="{{ profile_user.get('volunteer_code') }}" disabled class="w-full font-mono text-sm py-2.5 px-3 border border-slate-200 bg-slate-100 text-blue-600 font-bold rounded-lg outline-none cursor-not-allowed">
+                </div>
+
+                {% if is_owner %}
+                <div class="pt-4 border-t flex justify-end">
+                    <button type="submit" class="py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow transition-all">
+                        Save Profile Changes
+                    </button>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+    </main>
+
+    <!-- CROPPER MODAL -->
+    <div id="cropper-modal" class="fixed inset-0 bg-slate-900/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-slate-900 text-sm">✂️ Crop Profile Photo</h3>
+                <button type="button" onclick="closeCropperModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="max-h-[55vh] overflow-hidden bg-slate-900 rounded-xl flex items-center justify-center">
+                <img id="image-to-crop" src="" class="max-w-full block">
+            </div>
+
+            <div class="flex justify-between items-center pt-2">
+                <span class="text-xs text-slate-500">I-scale para magkasya sa frame.</span>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeCropperModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
+                    <button type="button" id="crop-done-btn" onclick="applyCropAndSave({{ profile_user.get('id') }})" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                        <span>✓</span> Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SELFIE CAMERA MODAL -->
+    <div id="selfie-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-slate-900 text-sm">📸 Take a Selfie</h3>
+                <button type="button" onclick="closeSelfieModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <div class="relative rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">
+                <video id="selfie-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                <canvas id="selfie-canvas" class="hidden"></canvas>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeSelfieModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">Cancel</button>
+                <button type="button" onclick="captureSelfieToCrop()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Capture & Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+
+        function clearLoginStorage() {
+            localStorage.removeItem('kabs_volunteer_code');
+            localStorage.removeItem('kabs_login_timestamp');
+        }
+
+        {% if is_admin %}
+        function updateClassification(targetUserId, newType) {
+            fetch('/update-volunteer-classification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: targetUserId, volunteer_type: newType })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert(data.message || "Failed to update classification.");
+                }
+            })
+            .catch(() => alert("Network error."));
+        }
+
+        function updateVolunteerStatus(targetUserId, newStatus) {
+            fetch('/update-volunteer-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: targetUserId, status: newStatus })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert(data.message || "Failed to update status.");
+                }
+            })
+            .catch(() => alert("Network error."));
+        }
+        {% endif %}
+
+        let cropper = null;
+
+        function openCropperWithImage(imgUrl) {
+            const modal = document.getElementById('cropper-modal');
+            const imgElement = document.getElementById('image-to-crop');
+            imgElement.src = imgUrl;
+            modal.classList.remove('hidden');
+
+            if (cropper) {
+                cropper.destroy();
+            }
+
+            setTimeout(() => {
+                cropper = new Cropper(imgElement, {
+                    aspectRatio: 1,
+                    viewMode: 1,
+                    autoCropArea: 0.85,
+                    responsive: true,
+                });
+            }, 100);
+        }
+
+        function closeCropperModal() {
+            const modal = document.getElementById('cropper-modal');
+            modal.classList.add('hidden');
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            const input = document.getElementById('choose-photo-input');
+            if (input) input.value = '';
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    openCropperWithImage(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function applyCropAndSave(targetUserId) {
+            if (!cropper) return;
+            const btn = document.getElementById('crop-done-btn');
+            btn.innerText = "⏳ Saving...";
+            btn.disabled = true;
+
+            const croppedCanvas = cropper.getCroppedCanvas({ width: 256, height: 256 });
+            const base64Data = croppedCanvas.toDataURL('image/jpeg', 0.85);
+
+            fetch('/save-cropped-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: targetUserId, image_data: base64Data })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || "Failed to save profile picture.");
+                    btn.innerText = "Done";
+                    btn.disabled = false;
+                }
+            })
+            .catch(() => {
+                alert("Network error saving photo.");
+                btn.innerText = "Done";
+                btn.disabled = false;
+            });
+        }
+
+        let selfieStream = null;
+
+        function openSelfieModal() {
+            const modal = document.getElementById('selfie-modal');
+            modal.classList.remove('hidden');
+            const video = document.getElementById('selfie-video');
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+                .then(stream => {
+                    selfieStream = stream;
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    alert("Hindi mabuksan ang camera. Pakisuri ang camera permissions sa browser.");
+                    closeSelfieModal();
+                });
+        }
+
+        function closeSelfieModal() {
+            const modal = document.getElementById('selfie-modal');
+            modal.classList.add('hidden');
+            if (selfieStream) {
+                selfieStream.getTracks().forEach(track => track.stop());
+                selfieStream = null;
+            }
+        }
+
+        function captureSelfieToCrop() {
+            const video = document.getElementById('selfie-video');
+            const canvas = document.getElementById('selfie-canvas');
+            canvas.width = video.videoWidth || 480;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            closeSelfieModal();
+            openCropperWithImage(dataUrl);
+        }
+
+        let currentProfileState = null;
+        setInterval(() => {
+            fetch('/sync-state')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.logged_in) {
+                        clearLoginStorage();
+                        window.location.replace('/');
+                        return;
+                    }
+                    if (currentProfileState === null) {
+                        currentProfileState = data.state_hash;
+                    } else if (currentProfileState !== data.state_hash) {
+                        window.location.reload();
+                    }
+                })
+                .catch(() => {});
+        }, 2000);
+    </script>
+</body>
+</html>
+"""
+
+
+@app.route("/")
+def index():
+    session_user = session.get("user")
+    user = None
+    active_record = None
+
+    if session_user:
+        user = get_fresh_user_profile(session_user["id"])
+        if not user:
+            session.pop("user", None)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+
+    if user:
+        cursor.execute(
+            f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+            (user["id"],),
+        )
+        active_record = cursor.fetchone()
+
+    cursor.execute(
+        """
+        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
+        FROM attendance
+        JOIN volunteers ON attendance.volunteer_id = volunteers.id
+        ORDER BY attendance.id DESC
+        LIMIT 100
+        """
+    )
+    logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    is_admin = is_admin_user(user)
+
+    if os.path.exists(os.path.join("templates", "index.html")):
+        return render_template(
+            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin
+        )
+
+    return render_template_string(
+        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin
+    )
+
+
+@app.route("/sync-state")
+def sync_state():
+    session_user = session.get("user")
+    if not session_user:
+        return jsonify({"logged_in": False, "state_hash": "logged_out"})
+
+    state_hash = get_current_system_state_hash(session_user["id"])
+    return jsonify({"logged_in": True, "state_hash": state_hash})
+
+
+@app.route("/qr-auth/<token>")
+def qr_direct_auth(token):
+    user = authenticate_user_by_qr(token)
+    if user:
+        session.permanent = True
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+        }
+        session.modified = True
+        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+    else:
+        flash("❌ Invalid o expired na QR Pass.", "danger")
+    return redirect(url_for("index"))
+
+
+@app.route("/profile")
+def profile_self():
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login para makita ang iyong profile.", "danger")
+        return redirect(url_for("index"))
+
+    user = get_fresh_user_profile(session_user["id"])
+    if not user:
+        session.pop("user", None)
+        return redirect(url_for("index"))
+
+    is_admin = is_admin_user(user)
+    return render_template_string(
+        PROFILE_TEMPLATE, profile_user=user, session_user=user, is_admin=is_admin, is_owner=True
+    )
+
+
+@app.route("/profile/<int:user_id>")
+def profile_by_id(user_id):
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user) and session_user["id"] != user_id:
+        flash("🔒 Walang pahintulot na buksan ang profile ng ibang volunteer.", "warning")
+        return redirect(url_for("index"))
+
+    target_user = get_fresh_user_profile(user_id)
+    if not target_user:
+        flash("Hindi natagpuan ang volunteer profile.", "danger")
+        return redirect(url_for("index"))
+
+    is_admin = is_admin_user(current_user)
+    is_owner = (session_user["id"] == user_id)
+
+    return render_template_string(
+        PROFILE_TEMPLATE, profile_user=target_user, session_user=current_user, is_admin=is_admin, is_owner=is_owner
+    )
+
+
+@app.route("/update-volunteer-classification", methods=["POST"])
+def update_volunteer_classification():
+    session_user = session.get("user")
+    if not session_user:
+        return jsonify({"success": False, "message": "Kailangang naka-login muna."})
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may kapangyarihang magtalaga ng Core/Auxiliary status."})
+
+    data = request.json or {}
+    target_user_id = data.get("user_id")
+    new_type = data.get("volunteer_type")
+    if new_type not in ["Core", "Auxiliary"]:
+        return jsonify({"success": False, "message": "Invalid type."})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    cursor.execute(
+        f"UPDATE volunteers SET volunteer_type = {ph} WHERE id = {ph}",
+        (new_type, target_user_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash(f"✅ Matagumpay na pinalitan bilang {new_type} Volunteer!", "success")
+    return jsonify({"success": True})
+
+
+@app.route("/update-volunteer-status", methods=["POST"])
+def update_volunteer_status():
+    session_user = session.get("user")
+    if not session_user:
+        return jsonify({"success": False, "message": "Kailangang naka-login muna."})
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may pahintulot na magbago ng volunteer status."})
+
+    data = request.json or {}
+    target_user_id = data.get("user_id") or session_user["id"]
+    new_status = data.get("status")
+    if new_status not in ["Active", "Inactive"]:
+        return jsonify({"success": False, "message": "Invalid status value."})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    cursor.execute(
+        f"UPDATE volunteers SET volunteer_status = {ph} WHERE id = {ph}",
+        (new_status, target_user_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    flash(f"✅ Matagumpay na pinalitan ang status bilang: {new_status} Volunteer!", "success")
+    return jsonify({"success": True})
+
+
+@app.route("/edit-profile/<int:user_id>", methods=["POST"])
+def edit_profile(user_id):
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangang naka-login muna para makapag-edit ng profile.", "danger")
+        return redirect(url_for("index"))
+
+    if session_user["id"] != user_id:
+        flash("❌ Bawal baguhin ang pangalan at numero ng ibang volunteer. Ang may-ari lamang ang may karapatan dito.", "danger")
+        return redirect(url_for("profile_by_id", user_id=user_id))
+
+    name = request.form.get("name", "").strip()
+    contact = request.form.get("contact", "").strip()
+
+    if len(name) > 50 or len(name) < 2:
+        flash("❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.", "danger")
+        return redirect(url_for("profile_by_id", user_id=user_id))
+
+    if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+        flash("❌ Ang contact number ay dapat 11 digits at nagsisimula sa '09'.", "danger")
+        return redirect(url_for("profile_by_id", user_id=user_id))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    cursor.execute(
+        f"UPDATE volunteers SET name = {ph}, contact = {ph} WHERE id = {ph}",
+        (name, contact, user_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    session["user"]["name"] = name
+    session.modified = True
+
+    flash("✅ Matagumpay na na-update ang iyong KABS Profile information!", "success")
+    return redirect(url_for("profile_by_id", user_id=user_id))
+
+
+@app.route("/save-cropped-profile", methods=["POST"])
+def save_cropped_profile():
+    session_user = session.get("user")
+    if not session_user:
+        return jsonify({"success": False, "message": "Kailangang naka-login muna."})
+
+    data = request.json or {}
+    target_user_id = data.get("user_id") or session_user
