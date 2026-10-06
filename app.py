@@ -28,7 +28,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v18")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v19")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -432,9 +432,9 @@ MAIN_TEMPLATE = """
                         {% endif %}
                     </a>
 
-                    <a href="/logout" onclick="clearLoginStorage();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-lg transition-all flex-shrink-0">
+                    <button type="button" onclick="handleLogoutClick();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-lg transition-all flex-shrink-0">
                         Log Out
-                    </a>
+                    </button>
                 {% endif %}
             </div>
         </div>
@@ -668,7 +668,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE TABLE (CLICKABLE VOLUNTEER NAME PATUNGO SA PROFILE) -->
+            <!-- ATTENDANCE TABLE (CLICKABLE VOLUNTEER NAME) -->
             {% if is_admin %}
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
@@ -791,7 +791,7 @@ MAIN_TEMPLATE = """
 
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
-                    ⬇️ I-scroll pababa hanggang dulo para ma-unlock...
+                    ⬇️️ I-scroll pababa hanggang dulo para ma-unlock...
                 </span>
                 <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
                     Sumasang-ayon Ako (Unlock Registration)
@@ -806,6 +806,12 @@ MAIN_TEMPLATE = """
         function clearLoginStorage() {
             localStorage.removeItem('kabs_volunteer_code');
             localStorage.removeItem('kabs_login_timestamp');
+            sessionStorage.removeItem('kabs_auto_restore_attempted');
+        }
+
+        function handleLogoutClick() {
+            clearLoginStorage();
+            window.location.href = '/logout';
         }
 
         {% if user %}
@@ -822,7 +828,6 @@ MAIN_TEMPLATE = """
                 const elapsed = Date.now() - parseInt(loginTimestamp, 10);
                 if (elapsed > FIVE_HOURS_MS) {
                     clearLoginStorage();
-                    window.location.replace('/logout');
                     return;
                 }
 
@@ -1067,7 +1072,7 @@ PROFILE_TEMPLATE = """
                 <span>←</span>
                 <span class="font-bold text-xs sm:text-sm">Bumalik sa Dashboard</span>
             </a>
-            <a href="/logout" onclick="clearLoginStorage();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</a>
+            <button type="button" onclick="handleLogoutClick();" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all">Log Out</button>
         </div>
     </header>
 
@@ -1285,6 +1290,12 @@ PROFILE_TEMPLATE = """
         function clearLoginStorage() {
             localStorage.removeItem('kabs_volunteer_code');
             localStorage.removeItem('kabs_login_timestamp');
+            sessionStorage.removeItem('kabs_auto_restore_attempted');
+        }
+
+        function handleLogoutClick() {
+            clearLoginStorage();
+            window.location.href = '/logout';
         }
 
         {% if is_admin %}
@@ -1471,7 +1482,7 @@ def index():
     if session_user:
         user = get_fresh_user_profile(session_user["id"])
         if not user:
-            session.pop("user", None)
+            session.clear()
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1546,7 +1557,7 @@ def profile_self():
 
     user = get_fresh_user_profile(session_user["id"])
     if not user:
-        session.pop("user", None)
+        session.clear()
         return redirect(url_for("index"))
 
     is_admin = is_admin_user(user)
@@ -1689,4 +1700,402 @@ def save_cropped_profile():
         return jsonify({"success": False, "message": "Kailangang naka-login muna."})
 
     data = request.json or {}
-    target_user_id = data.get("user_id") or session_user
+    target_user_id = data.get("user_id") or session_user["id"]
+
+    if session_user["id"] != target_user_id:
+        return jsonify({"success": False, "message": "❌ Tanging ang may-ari lamang ng account ang maaaring magpalit ng larawan."})
+
+    image_data = data.get("image_data")
+    if not image_data or not image_data.startswith("data:image"):
+        return jsonify({"success": False, "message": "Walang natanggap na cropped photo."})
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
+        cursor.execute(
+            f"UPDATE volunteers SET profile_pic = {ph} WHERE id = {ph}",
+            (image_data, target_user_id),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        flash("✅ Matagumpay na na-crop at na-save ang Profile Picture!", "success")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route("/export-attendance")
+def export_attendance():
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login para makapag-export ng attendance.", "danger")
+        return redirect(url_for("index"))
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        flash("❌ Tanging ang SK Admin lamang ang may karapatang mag-export ng official attendance log.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT volunteers.volunteer_code, volunteers.name, volunteers.email, volunteers.contact,
+               attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.total_hours
+        FROM attendance
+        JOIN volunteers ON attendance.volunteer_id = volunteers.id
+        ORDER BY attendance.id DESC
+        """
+    )
+    records = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not records or len(records) == 0:
+        flash("❌ Walang attendance records na maaring i-export sa ngayon.", "warning")
+        return redirect(url_for("index"))
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Volunteer Code",
+        "Volunteer Name",
+        "Email Address",
+        "Contact Number",
+        "Agenda / Event",
+        "Assigned Task",
+        "Time In",
+        "Time Out",
+        "Total Hours",
+    ])
+
+    for row in records:
+        writer.writerow([
+            row[0],
+            row[1],
+            row[2],
+            f"'{row[3]}'",
+            row[4] if row[4] else "-",
+            row[5] if row[5] else "-",
+            row[6],
+            row[7] if row[7] else "Clocked In (Active)",
+            row[8] if row[8] else ("In Progress" if not row[7] else "-"),
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/login-qr-api", methods=["POST"])
+def login_qr_api():
+    data = request.json or {}
+    payload = data.get("qr_payload", "")
+    user = authenticate_user_by_qr(payload)
+
+    if user:
+        session.permanent = True
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+        }
+        session.modified = True
+        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+        return jsonify({"success": True, "volunteer_code": user[5]})
+
+    return jsonify(
+        {"success": False, "message": "❌ Invalid o hindi kinikilalang QR Code."}
+    )
+
+
+@app.route("/login-code", methods=["POST"])
+def login_code():
+    code = request.form.get("volunteer_code", "").strip()
+    user = authenticate_user_by_qr(code)
+
+    if user:
+        session.permanent = True
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "volunteer_code": user[5] if len(user) > 5 else "N/A",
+        }
+        session.modified = True
+        flash(f"✅ Welcome back, {user[1]}!", "success")
+    else:
+        flash("❌ Invalid na Volunteer Code.", "danger")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.form.get("email", "").strip().lower()
+    contact = request.form.get("contact", "").strip()
+
+    if not email.endswith("@gmail.com"):
+        flash("❌ Email must end with @gmail.com", "danger")
+        return redirect(url_for("index"))
+
+    if (
+        not contact.isdigit()
+        or len(contact) != 11
+        or not contact.startswith("09")
+    ):
+        flash(
+            "❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.",
+            "danger",
+        )
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+    cursor.execute(
+        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
+        (email, contact),
+    )
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if user:
+        session.permanent = True
+        session["user"] = {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2],
+            "volunteer_code": user[5],
+        }
+        session.modified = True
+        flash(f"✅ Welcome back, {user[1]}!", "success")
+    else:
+        flash(
+            "❌ Walang profile na tumugma sa email o contact number na nilagay.",
+            "danger",
+        )
+
+    return redirect(url_for("index"))
+
+
+@app.route("/log-self-attendance", methods=["POST"])
+def log_self_attendance():
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    ph = "%s" if USE_POSTGRES else "?"
+
+    cursor.execute(
+        f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+        (session_user["id"],),
+    )
+    active_record = cursor.fetchone()
+
+    if active_record:
+        rec_id = active_record[0]
+        time_in_val = active_record[1]
+        duration_str = calculate_duration(time_in_val, now)
+
+        cursor.execute(
+            f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
+            (now, duration_str, rec_id),
+        )
+        conn.commit()
+        flash(
+            f"🔴 TIME OUT recorded for {session_user.get('name')} ({now}) | Total Hours: {duration_str}",
+            "success",
+        )
+    else:
+        agenda = request.form.get("agenda", "").strip()
+        task = request.form.get("task", "").strip()
+        agenda_val = agenda if agenda else "General Assembly"
+        task_val = task if task else "Volunteer Duty"
+
+        cursor.execute(
+            f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
+            (session_user["id"], agenda_val, task_val, now),
+        )
+        conn.commit()
+        flash(
+            f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now})",
+            "success",
+        )
+
+    cursor.close()
+    conn.close()
+
+    return redirect(url_for("index"))
+
+
+@app.route("/register", methods=["POST"])
+def register():
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    contact = request.form.get("contact", "").strip()
+    agree_terms = request.form.get("agree_terms")
+
+    if not agree_terms:
+        flash(
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
+            "danger",
+        )
+        return redirect(url_for("index"))
+
+    if not email.endswith("@gmail.com") or len(email) <= 10:
+        flash("❌ Valid @gmail.com address lamang ang tinatanggap!", "danger")
+        return redirect(url_for("index"))
+
+    if len(name) > 50 or len(name) < 2:
+        flash(
+            "❌ Ang pangalan ay dapat nasa pagitan ng 2 hanggang 50 characters.",
+            "danger",
+        )
+        return redirect(url_for("index"))
+
+    if (
+        not contact.isdigit()
+        or len(contact) != 11
+        or not contact.startswith("09")
+    ):
+        flash(
+            "❌ Ang contact number ay dapat binubuo lamang ng 11 digits na numero at nagsisimula sa '09'.",
+            "danger",
+        )
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+
+    cursor.execute(
+        f"SELECT id, name FROM volunteers WHERE email = {ph}",
+        (email,),
+    )
+    existing_user = cursor.fetchone()
+    if existing_user:
+        cursor.close()
+        conn.close()
+        flash(
+            f"⚠️ Registered ka na, {existing_user[1]}! Mag-login ka na lamang gamit ang iyong QR o Contact Number.",
+            "warning",
+        )
+        return redirect(url_for("index"))
+
+    auth_token = secrets.token_hex(16)
+    unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
+    now_str = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+    if USE_POSTGRES:
+        cursor.execute(
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
+            (name, email, contact, auth_token, unique_volunteer_code, now_str),
+        )
+        v_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(
+            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (?, ?, ?, ?, ?, NULL, 'Active', 'Auxiliary', ?)",
+            (name, email, contact, auth_token, unique_volunteer_code, now_str),
+        )
+        v_id = cursor.lastrowid
+
+    qr_filename = f"volunteer_{v_id}.png"
+    qr_path = os.path.join(QR_FOLDER, qr_filename)
+    img = qrcode.make(unique_volunteer_code)
+    img.save(qr_path)
+
+    cursor.execute(
+        f"UPDATE volunteers SET qr_code = {ph} WHERE id = {ph}",
+        (qr_filename, v_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    session.permanent = True
+    session["user"] = {
+        "id": v_id,
+        "name": name,
+        "email": email,
+        "volunteer_code": unique_volunteer_code,
+    }
+    session.modified = True
+    flash(f"✅ Registration complete! Welcome, {name}.", "success")
+    return redirect(url_for("index"))
+
+
+# SIGURADONG LIGTAS NA LOGOUT ENDPOINT (WALANG 404)
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    session.clear()
+    flash("Naka-log out ka na.", "success")
+    return redirect(url_for("index"))
+
+
+# ERROR HANDLER PARA WALANG PUTING 404 PAGE NA LILITAW
+@app.errorhandler(404)
+def page_not_found(e):
+    return redirect(url_for("index"))
+
+
+@app.route("/delete-log/<int:log_id>", methods=["POST"])
+def delete_log(log_id):
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login para makapagbura ng record.", "danger")
+        return redirect(url_for("index"))
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        flash("❌ Tanging ang SK Admin lamang ang may pahintulot na magbura ng attendance records.", "danger")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ph = "%s" if USE_POSTGRES else "?"
+
+    cursor.execute(
+        f"SELECT time_out FROM attendance WHERE id = {ph}",
+        (log_id,),
+    )
+    target = cursor.fetchone()
+
+    if not target:
+        flash("Hindi natagpuan ang attendance record.", "danger")
+    elif target[0] is None:
+        flash(
+            "❌ Bawal burahin ang attendance record habang naka-Clocked In pa! Mag-Time Out muna.",
+            "warning",
+        )
+    else:
+        cursor.execute(
+            f"DELETE FROM attendance WHERE id = {ph}",
+            (log_id,),
+        )
+        conn.commit()
+        flash("🗑️ Matagumpay na nabura ang attendance log!", "success")
+
+    cursor.close()
+    conn.close()
+    return redirect(url_for("index"))
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
