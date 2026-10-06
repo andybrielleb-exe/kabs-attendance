@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v28")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v29")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -423,6 +423,7 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
+    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -560,7 +561,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW: PUNCH CARD AT PASS -->
+            <!-- LOGGED IN VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if active_record %}
@@ -633,7 +634,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG: NAKIKITA LAMANG KAPAG NAKA-LOGIN -->
+            <!-- ATTENDANCE LOG: NASA TAAS NG MANUAL -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -732,7 +733,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- BUONG KABS VOLUNTEER MANUAL: NASA PINAKAIBABA -->
+            <!-- BUONG KABS VOLUNTEER MANUAL -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
                     <div>
@@ -744,46 +745,19 @@ MAIN_TEMPLATE = """
                 <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
                     </section>
-
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
-                        </ul>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
                     </section>
-
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
-                            </div>
-                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
-                            </div>
-                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
-                            </div>
-                        </div>
+                        <p>Action, Bayanihan, at Service[cite: 5].</p>
                     </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
-                    </section>
-
                     <section class="space-y-2 pb-2">
-                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                        <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
                     </section>
                 </div>
             </div>
@@ -982,9 +956,12 @@ MAIN_TEMPLATE = """
         }
 
         let currentSystemState = null;
+        let isSyncPaused = false;
 
         function startMultiDeviceSynchronizer() {
             setInterval(() => {
+                if (isSyncPaused) return;
+
                 fetch('/sync-state')
                     .then(res => res.json())
                     .then(data => {
@@ -1187,7 +1164,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS -->
+                    <!-- 2. STATUS (0-DELAY DOM UPDATE) -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1360,9 +1337,16 @@ PROFILE_TEMPLATE = """
             window.location.href = '/logout';
         }
 
+        let isSyncPaused = false;
+        function pauseSyncTemporarily() {
+            isSyncPaused = true;
+            setTimeout(() => { isSyncPaused = false; }, 4000);
+        }
+
         {% if is_admin %}
-        // ZERO-DELAY CLASSIFICATION UPDATE
+        // ZERO-DELAY CLASSIFICATION UPDATE (CORE / AUXILIARY)
         function updateClassificationFast(targetUserId, newType) {
+            pauseSyncTemporarily();
             document.getElementById('type-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-classification-text');
             const btn = document.getElementById('type-btn-main');
@@ -1390,8 +1374,9 @@ PROFILE_TEMPLATE = """
             .catch(() => {});
         }
 
-        // ZERO-DELAY STATUS UPDATE
+        // ZERO-DELAY STATUS UPDATE (ACTIVE / INACTIVE)
         function updateVolunteerStatusFast(targetUserId, newStatus) {
+            pauseSyncTemporarily();
             document.getElementById('status-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-status-text');
             const btn = document.getElementById('status-btn-main');
@@ -1537,6 +1522,8 @@ PROFILE_TEMPLATE = """
 
         let currentProfileState = null;
         setInterval(() => {
+            if (isSyncPaused) return;
+
             fetch('/sync-state')
                 .then(res => res.json())
                 .then(data => {
@@ -1688,7 +1675,6 @@ def profile_by_id(user_id):
     )
 
 
-# FAST ZERO-DELAY CLASSIFICATION UPDATE ENDPOINT
 @app.route("/update-volunteer-classification", methods=["POST"])
 def update_volunteer_classification():
     session_user = session.get("user")
@@ -1716,7 +1702,6 @@ def update_volunteer_classification():
     cursor.close()
     conn.close()
 
-    # Kung binago ang sariling account, i-update agad ang session para walang stale cookie
     if session_user["id"] == target_user_id:
         session["user"]["volunteer_type"] = new_type
         session.modified = True
@@ -1725,7 +1710,6 @@ def update_volunteer_classification():
     return jsonify({"success": True, "state_hash": new_hash})
 
 
-# FAST ZERO-DELAY STATUS UPDATE ENDPOINT
 @app.route("/update-volunteer-status", methods=["POST"])
 def update_volunteer_status():
     session_user = session.get("user")
