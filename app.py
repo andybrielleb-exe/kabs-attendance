@@ -7,7 +7,7 @@ import os
 import re
 import secrets
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import (
     Flask,
     Response,
@@ -24,12 +24,18 @@ from flask import (
 import qrcode
 
 try:
+    from zoneinfo import ZoneInfo
+    PH_TZ = ZoneInfo("Asia/Manila")
+except Exception:
+    PH_TZ = timezone(timedelta(hours=8))
+
+try:
     import psycopg2
 except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v24")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v25")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -43,6 +49,8 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 
+QR_FOLDER = os.path.join("static", "qrcodes")
+os.makedirs(QR_FOLDER, exist_ok=True)
 
 ADMIN_EMAILS = [
     "andybrielleb@gmail.com",
@@ -57,21 +65,17 @@ ADMIN_CODES = [
 ]
 
 
-def is_admin_user(user_dict):
-    if not user_dict:
-        return False
-    email = str(user_dict.get("email", "")).strip().lower()
-    code = str(user_dict.get("volunteer_code", "")).strip().upper()
-    return email in ADMIN_EMAILS or code in ADMIN_CODES
+def get_ph_now():
+    """Nagbabalik ng eksaktong oras at petsa sa Pilipinas (Asia/Manila - UTC+8)."""
+    return datetime.now(PH_TZ)
 
 
-def get_db_connection():
-    if USE_POSTGRES:
-        return psycopg2.connect(DATABASE_URL)
-    return sqlite3.connect("kabs.db")
+def format_ph_time(dt_obj):
+    return dt_obj.strftime("%Y-%m-%d %I:%M:%S %p")
 
 
 def calculate_duration(time_in_str, time_out_str):
+    """Eksaktong kinukwenta ang volunteer hours at minutes nang walang timezone mismatch."""
     if not time_in_str or not time_out_str:
         return None
     time_format = "%Y-%m-%d %I:%M:%S %p"
@@ -84,11 +88,28 @@ def calculate_duration(time_in_str, time_out_str):
             return "0m"
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
-        if hours > 0:
+        if hours > 0 and minutes > 0:
             return f"{hours}h {minutes}m"
-        return f"{minutes}m"
+        elif hours > 0 and minutes == 0:
+            return f"{hours}h"
+        else:
+            return f"{minutes}m"
     except Exception:
         return None
+
+
+def is_admin_user(user_dict):
+    if not user_dict:
+        return False
+    email = str(user_dict.get("email", "")).strip().lower()
+    code = str(user_dict.get("volunteer_code", "")).strip().upper()
+    return email in ADMIN_EMAILS or code in ADMIN_CODES
+
+
+def get_db_connection():
+    if USE_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect("kabs.db")
 
 
 def init_db():
@@ -317,13 +338,15 @@ def get_fresh_user_profile(user_id):
     status = row[7] if (len(row) > 7 and row[7]) else "Active"
     v_type = row[8] if (len(row) > 8 and row[8]) else "Auxiliary"
     last_accessed_str = row[9] if (len(row) > 9 and row[9]) else None
-    now_dt = datetime.now()
-    now_str = now_dt.strftime("%Y-%m-%d %I:%M:%S %p")
+    
+    now_dt = get_ph_now()
+    now_str = format_ph_time(now_dt)
 
     is_over_six_months = False
     if last_accessed_str:
         try:
             last_dt = datetime.strptime(last_accessed_str.strip(), "%Y-%m-%d %I:%M:%S %p")
+            last_dt = last_dt.replace(tzinfo=PH_TZ)
             if (now_dt - last_dt).days >= 180:
                 is_over_six_months = True
         except Exception:
@@ -602,7 +625,7 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
-                <!-- OFFICIAL QR CODE PASS (DYNAMIC IN-MEMORY GENERATION) -->
+                <!-- OFFICIAL QR CODE PASS -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
@@ -622,7 +645,7 @@ MAIN_TEMPLATE = """
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
                         <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
+                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo (PST Time).</p>
                     </div>
                     
                     {% if is_admin %}
@@ -675,13 +698,13 @@ MAIN_TEMPLATE = """
                                 </td>
                                 <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
                                 <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                <td class="py-3 px-4 text-emerald-600 font-semibold">{{ log[3] }}</td>
-                                <td class="py-3 px-4 font-medium {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                <td class="py-3 px-4 text-emerald-600 font-semibold whitespace-nowrap">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium whitespace-nowrap {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
                                     {{ log[4] if log[4] else 'Clocked In' }}
                                 </td>
                                 <td class="py-3 px-4 text-center">
                                     {% if log[6] %}
-                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs">
+                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs whitespace-nowrap">
                                             ⏱️ {{ log[6] }}
                                         </span>
                                     {% elif log[4] %}
@@ -774,7 +797,7 @@ MAIN_TEMPLATE = """
         {% endif %}
     </main>
 
-    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION -->
+    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION (WITH AUTO-UNLOCK) -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
@@ -788,19 +811,50 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
                 </section>
+
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
+                    </ul>
                 </section>
+
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <p>Action, Bayanihan, at Service[cite: 5].</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
+                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
+                        </div>
+                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
+                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
+                        </div>
+                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
+                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
+                        </div>
+                    </div>
                 </section>
+
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
+                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
+                </section>
+
                 <section class="space-y-2 pb-2">
-                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
-                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
+                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
+                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual[cite: 5].</p>
+                        <p class="text-[11px] text-emerald-700">Maaari mo nang i-unlock ang registration form sa pamamagitan ng button sa ibaba[cite: 5].</p>
+                    </div>
                 </section>
             </div>
 
@@ -930,24 +984,25 @@ MAIN_TEMPLATE = """
         });
         {% endif %}
 
+        // ACCURATE LIVE RUNNING DUTY TIMER (MATCHED WITH PHILIPPINE TIME FORMAT)
         function startLiveDutyTimer() {
             const timeInElem = document.getElementById('session-time-in');
             const timerElem = document.getElementById('live-timer');
             if (!timeInElem || !timerElem) return;
 
             const timeInText = timeInElem.innerText.trim();
-            function parseCustomDate(str) {
+            function parsePSTDate(str) {
                 const parts = str.split(' ');
                 if (parts.length < 3) return new Date(str);
                 const [dPart, tPart, ampm] = parts;
                 const [year, month, day] = dPart.split('-').map(Number);
                 let [hours, minutes, seconds] = tPart.split(':').map(Number);
-                if (ampm === 'PM' && hours < 12) hours += 12;
-                if (ampm === 'AM' && hours === 12) hours = 0;
+                if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+                if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
                 return new Date(year, month - 1, day, hours, minutes, seconds);
             }
 
-            const startTime = parseCustomDate(timeInText).getTime();
+            const startTime = parsePSTDate(timeInText).getTime();
 
             function updateTimer() {
                 const now = new Date().getTime();
@@ -1587,7 +1642,6 @@ def index():
     )
 
 
-# DYNAMIC IN-MEMORY QR CODE GENERATOR (HINDI NABUBURA SA RESTART)
 @app.route("/qr-code/<volunteer_code>")
 def generate_qr_code(volunteer_code):
     clean_code = str(volunteer_code).strip().upper()
@@ -1883,8 +1937,8 @@ def export_attendance():
         "Contact Number",
         "Agenda / Event",
         "Assigned Task",
-        "Time In",
-        "Time Out",
+        "Time In (PST)",
+        "Time Out (PST)",
         "Total Hours",
     ])
 
@@ -1902,7 +1956,7 @@ def export_attendance():
         ])
 
     csv_data = "\ufeff" + output.getvalue()
-    filename = f"kabs_attendance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"kabs_attendance_{get_ph_now().strftime('%Y%m%d_%H%M%S')}.csv"
 
     return Response(
         csv_data,
@@ -2014,7 +2068,7 @@ def log_self_attendance():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    now_pst = format_ph_time(get_ph_now())
     ph = "%s" if USE_POSTGRES else "?"
 
     cursor.execute(
@@ -2026,15 +2080,15 @@ def log_self_attendance():
     if active_record:
         rec_id = active_record[0]
         time_in_val = active_record[1]
-        duration_str = calculate_duration(time_in_val, now)
+        duration_str = calculate_duration(time_in_val, now_pst)
 
         cursor.execute(
             f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
-            (now, duration_str, rec_id),
+            (now_pst, duration_str, rec_id),
         )
         conn.commit()
         flash(
-            f"🔴 TIME OUT recorded for {session_user.get('name')} ({now}) | Total Hours: {duration_str}",
+            f"🔴 TIME OUT recorded for {session_user.get('name')} ({now_pst}) | Total Hours: {duration_str}",
             "success",
         )
     else:
@@ -2045,11 +2099,11 @@ def log_self_attendance():
 
         cursor.execute(
             f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
-            (session_user["id"], agenda_val, task_val, now),
+            (session_user["id"], agenda_val, task_val, now_pst),
         )
         conn.commit()
         flash(
-            f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now})",
+            f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now_pst})",
             "success",
         )
 
@@ -2115,18 +2169,18 @@ def register():
 
     auth_token = secrets.token_hex(16)
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
-    now_str = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    now_pst = format_ph_time(get_ph_now())
 
     if USE_POSTGRES:
         cursor.execute(
             "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
-            (name, email, contact, auth_token, unique_volunteer_code, now_str),
+            (name, email, contact, auth_token, unique_volunteer_code, now_pst),
         )
         v_id = cursor.fetchone()[0]
     else:
         cursor.execute(
             "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (?, ?, ?, ?, ?, NULL, 'Active', 'Auxiliary', ?)",
-            (name, email, contact, auth_token, unique_volunteer_code, now_str),
+            (name, email, contact, auth_token, unique_volunteer_code, now_pst),
         )
         v_id = cursor.lastrowid
 
