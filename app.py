@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v27")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v28")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -618,6 +618,7 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
+                <!-- OFFICIAL QR CODE PASS -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
@@ -632,7 +633,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG: NASA TAAS NG MANUAL -->
+            <!-- ATTENDANCE LOG: NAKIKITA LAMANG KAPAG NAKA-LOGIN -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -1186,7 +1187,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS (ZERO DELAY INSTANT UPDATE) -->
+                    <!-- 2. STATUS -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1286,7 +1287,7 @@ PROFILE_TEMPLATE = """
                 {% endif %}
             </form>
 
-            <!-- DANGER ZONE -->
+            <!-- DANGER ZONE: ADMIN-ONLY DELETE ACCOUNT -->
             {% if is_admin %}
             <div class="pt-6 border-t border-rose-200">
                 <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -1360,7 +1361,7 @@ PROFILE_TEMPLATE = """
         }
 
         {% if is_admin %}
-        // ZERO DELAY CLASSIFICATION UPDATE (CORE / AUXILIARY)
+        // ZERO-DELAY CLASSIFICATION UPDATE
         function updateClassificationFast(targetUserId, newType) {
             document.getElementById('type-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-classification-text');
@@ -1382,14 +1383,14 @@ PROFILE_TEMPLATE = """
             })
             .then(res => res.json())
             .then(data => {
-                if (!data.success) {
-                    alert(data.message || "Failed to update classification.");
+                if (data.state_hash) {
+                    currentProfileState = data.state_hash;
                 }
             })
             .catch(() => {});
         }
 
-        // ZERO DELAY STATUS UPDATE (ACTIVE / INACTIVE)
+        // ZERO-DELAY STATUS UPDATE
         function updateVolunteerStatusFast(targetUserId, newStatus) {
             document.getElementById('status-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-status-text');
@@ -1411,8 +1412,8 @@ PROFILE_TEMPLATE = """
             })
             .then(res => res.json())
             .then(data => {
-                if (!data.success) {
-                    alert(data.message || "Failed to update status.");
+                if (data.state_hash) {
+                    currentProfileState = data.state_hash;
                 }
             })
             .catch(() => {});
@@ -1687,6 +1688,7 @@ def profile_by_id(user_id):
     )
 
 
+# FAST ZERO-DELAY CLASSIFICATION UPDATE ENDPOINT
 @app.route("/update-volunteer-classification", methods=["POST"])
 def update_volunteer_classification():
     session_user = session.get("user")
@@ -1695,7 +1697,7 @@ def update_volunteer_classification():
 
     current_user = get_fresh_user_profile(session_user["id"])
     if not is_admin_user(current_user):
-        return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may kapangyarihang magtalaga ng Core/Auxiliary status."})
+        return jsonify({"success": False, "message": "Walang pahintulot."})
 
     data = request.json or {}
     target_user_id = data.get("user_id")
@@ -1714,9 +1716,16 @@ def update_volunteer_classification():
     cursor.close()
     conn.close()
 
-    return jsonify({"success": True})
+    # Kung binago ang sariling account, i-update agad ang session para walang stale cookie
+    if session_user["id"] == target_user_id:
+        session["user"]["volunteer_type"] = new_type
+        session.modified = True
+
+    new_hash = get_current_system_state_hash(session_user["id"])
+    return jsonify({"success": True, "state_hash": new_hash})
 
 
+# FAST ZERO-DELAY STATUS UPDATE ENDPOINT
 @app.route("/update-volunteer-status", methods=["POST"])
 def update_volunteer_status():
     session_user = session.get("user")
@@ -1725,7 +1734,7 @@ def update_volunteer_status():
 
     current_user = get_fresh_user_profile(session_user["id"])
     if not is_admin_user(current_user):
-        return jsonify({"success": False, "message": "❌ Tanging ang SK Admin lamang ang may pahintulot na magbago ng volunteer status."})
+        return jsonify({"success": False, "message": "Walang pahintulot."})
 
     data = request.json or {}
     target_user_id = data.get("user_id") or session_user["id"]
@@ -1744,7 +1753,12 @@ def update_volunteer_status():
     cursor.close()
     conn.close()
 
-    return jsonify({"success": True})
+    if session_user["id"] == target_user_id:
+        session["user"]["volunteer_status"] = new_status
+        session.modified = True
+
+    new_hash = get_current_system_state_hash(session_user["id"])
+    return jsonify({"success": True, "state_hash": new_hash})
 
 
 @app.route("/delete-volunteer-account/<int:user_id>", methods=["POST"])
