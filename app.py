@@ -18,6 +18,7 @@ from flask import (
     render_template_string,
     request,
     session,
+    send_file,
     url_for,
 )
 import qrcode
@@ -28,7 +29,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v23")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v24")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -42,8 +43,6 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 
-QR_FOLDER = os.path.join("static", "qrcodes")
-os.makedirs(QR_FOLDER, exist_ok=True)
 
 ADMIN_EMAILS = [
     "andybrielleb@gmail.com",
@@ -462,7 +461,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW: TANGING LOGIN AT REGISTRATION LAMANG ANG MAKIKITA -->
+            <!-- LOGGED OUT VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -603,19 +602,22 @@ MAIN_TEMPLATE = """
                     {% endif %}
                 </div>
 
+                <!-- OFFICIAL QR CODE PASS (DYNAMIC IN-MEMORY GENERATION) -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
                     <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
                         Official Pass
                     </span>
-                    <img src="/static/qrcodes/{{ user.get('qr_code') }}" class="w-36 h-36 mx-auto rounded-lg border p-1 mb-3" onerror="this.outerHTML='<div class=\\'text-xs text-slate-400 my-8\\'>QR Pass Image generated</div>'">
+                    <div class="my-3 flex justify-center">
+                        <img src="/qr-code/{{ user.get('volunteer_code') }}" alt="QR Code" class="w-36 h-36 rounded-lg border p-1 bg-white shadow-sm">
+                    </div>
                     <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.get('volunteer_code') }}</div><br>
                     <div class="flex justify-center">
-                        <a href="/static/qrcodes/{{ user.get('qr_code') }}" download class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
+                        <a href="/qr-code/{{ user.get('volunteer_code') }}" download="{{ user.get('volunteer_code') }}_pass.png" class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
                     </div>
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG: NAKIKITA LAMANG KAPAG NAKA-LOGIN (NASA TAAS NG MANUAL) -->
+            <!-- ATTENDANCE LOG: NAKIKITA LAMANG KAPAG NAKA-LOGIN -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -714,7 +716,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- BUONG KABS VOLUNTEER MANUAL: NAKIKITA LAMANG KAPAG NAKA-LOGIN (NASA PINAKAIBABA) -->
+            <!-- BUONG KABS VOLUNTEER MANUAL: NASA PINAKAIBABA -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
                     <div>
@@ -772,7 +774,7 @@ MAIN_TEMPLATE = """
         {% endif %}
     </main>
 
-    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION (AUTO-UNLOCK FUNCTION) -->
+    <!-- BUONG KABS MANUAL MODAL PARA SA REGISTRATION -->
     <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
         <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
@@ -786,56 +788,25 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
-                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
                 </section>
-
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
-                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
-                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
-                    </ul>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
                 </section>
-
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
-                        </div>
-                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
-                        </div>
-                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
-                        </div>
-                    </div>
+                    <p>Action, Bayanihan, at Service[cite: 5].</p>
                 </section>
-
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Assignments (4 Committees)</h4>
-                    <p class="text-xs">Ang mga volunteer ay nahahati sa 4 na komite: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), at <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
-                </section>
-
                 <section class="space-y-2 pb-2">
-                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                    <p class="text-xs">Inaasahan ang bawat isa na maging magalang, pumasok sa oras, at igalang ang kapwa[cite: 5]. Mahigpit na ipinagbabawal ang alak, droga, o pamemeke sa attendance logs[cite: 5]. May karapatan ang bawat volunteer sa ligtas na lugar, patas na pagtrato, at tamang pagkilala[cite: 5].</p>
-                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                        <p class="text-xs font-bold text-emerald-900">Narating mo na ang dulo ng KABS Volunteer Manual[cite: 5].</p>
-                        <p class="text-[11px] text-emerald-700">Maaari mo nang i-unlock ang registration form sa pamamagitan ng button sa ibaba[cite: 5].</p>
-                    </div>
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
                 </section>
             </div>
 
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
-                    ⬇️️ I-scroll pababa hanggang dulo para ma-unlock...
+                    ⬇️ I-scroll pababa hanggang dulo para ma-unlock...
                 </span>
                 <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
                     Sumasang-ayon Ako (Unlock Registration)
@@ -1158,7 +1129,7 @@ PROFILE_TEMPLATE = """
                 </div>
                 
                 <div class="flex items-center gap-2">
-                    <!-- 1. CLASSIFICATION: CORE O AUXILIARY VOLUNTEER -->
+                    <!-- 1. CLASSIFICATION -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1200,7 +1171,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS: ACTIVE O INACTIVE VOLUNTEER (FAST UPDATE) -->
+                    <!-- 2. STATUS -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1616,6 +1587,17 @@ def index():
     )
 
 
+# DYNAMIC IN-MEMORY QR CODE GENERATOR (HINDI NABUBURA SA RESTART)
+@app.route("/qr-code/<volunteer_code>")
+def generate_qr_code(volunteer_code):
+    clean_code = str(volunteer_code).strip().upper()
+    img = qrcode.make(clean_code)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
+
 @app.route("/sync-state")
 def sync_state():
     session_user = session.get("user")
@@ -1764,25 +1746,14 @@ def delete_volunteer_account(user_id):
     cursor = conn.cursor()
     ph = "%s" if USE_POSTGRES else "?"
 
-    cursor.execute(f"SELECT qr_code, name FROM volunteers WHERE id = {ph}", (user_id,))
+    cursor.execute(f"SELECT name FROM volunteers WHERE id = {ph}", (user_id,))
     target = cursor.fetchone()
 
     if target:
-        qr_file = target[0]
-        v_name = target[1]
-
+        v_name = target[0]
         cursor.execute(f"DELETE FROM attendance WHERE volunteer_id = {ph}", (user_id,))
         cursor.execute(f"DELETE FROM volunteers WHERE id = {ph}", (user_id,))
         conn.commit()
-
-        if qr_file:
-            file_path = os.path.join(QR_FOLDER, qr_file)
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-
         flash(f"🗑️ Matagumpay na nabura ang account ni {v_name} pati ang kanyang logs.", "success")
     else:
         flash("Hindi natagpuan ang account.", "danger")
@@ -2159,14 +2130,9 @@ def register():
         )
         v_id = cursor.lastrowid
 
-    qr_filename = f"volunteer_{v_id}.png"
-    qr_path = os.path.join(QR_FOLDER, qr_filename)
-    img = qrcode.make(unique_volunteer_code)
-    img.save(qr_path)
-
     cursor.execute(
         f"UPDATE volunteers SET qr_code = {ph} WHERE id = {ph}",
-        (qr_filename, v_id),
+        (unique_volunteer_code, v_id),
     )
     conn.commit()
     cursor.close()
