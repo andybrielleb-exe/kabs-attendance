@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v26")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v27")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -423,7 +423,6 @@ MAIN_TEMPLATE = """
     <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-12">
-    <!-- STICKY TOPBAR -->
     <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
         <div class="max-w-6xl mx-auto px-2 sm:px-4 py-2.5 flex justify-between items-center gap-1.5 sm:gap-3">
             <a href="/" class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink min-w-0">
@@ -633,7 +632,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG: NAKIKITA LAMANG KAPAG NAKA-LOGIN -->
+            <!-- ATTENDANCE LOG: NASA TAAS NG MANUAL -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -1003,7 +1002,7 @@ MAIN_TEMPLATE = """
                         }
                     })
                     .catch(() => {});
-            }, 2000);
+            }, 3000);
         }
 
         window.addEventListener("DOMContentLoaded", () => {
@@ -1148,7 +1147,7 @@ PROFILE_TEMPLATE = """
                     <!-- 1. CLASSIFICATION -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
-                        <button type="button" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
+                        <button type="button" id="type-btn-main" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
                             {% if profile_user.get('volunteer_type') == 'Core' %}
                                 bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100
                             {% else %}
@@ -1164,10 +1163,10 @@ PROFILE_TEMPLATE = """
                             <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </button>
                         <div id="type-dropdown-menu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 py-1.5">
-                            <button type="button" onclick="updateClassification({{ profile_user.get('id') }}, 'Core')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-purple-50 text-purple-700 flex items-center gap-2">
+                            <button type="button" onclick="updateClassificationFast({{ profile_user.get('id') }}, 'Core')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-purple-50 text-purple-700 flex items-center gap-2">
                                 <span>⭐</span> Core Volunteer
                             </button>
-                            <button type="button" onclick="updateClassification({{ profile_user.get('id') }}, 'Auxiliary')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-sky-50 text-sky-700 flex items-center gap-2">
+                            <button type="button" onclick="updateClassificationFast({{ profile_user.get('id') }}, 'Auxiliary')" class="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-sky-50 text-sky-700 flex items-center gap-2">
                                 <span>🤝</span> Auxiliary Volunteer
                             </button>
                         </div>
@@ -1187,7 +1186,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS (INSTANT ZERO-DELAY UPDATE) -->
+                    <!-- 2. STATUS (ZERO DELAY INSTANT UPDATE) -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1287,7 +1286,7 @@ PROFILE_TEMPLATE = """
                 {% endif %}
             </form>
 
-            <!-- DANGER ZONE: ADMIN-ONLY DELETE ACCOUNT -->
+            <!-- DANGER ZONE -->
             {% if is_admin %}
             <div class="pt-6 border-t border-rose-200">
                 <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -1361,11 +1360,19 @@ PROFILE_TEMPLATE = """
         }
 
         {% if is_admin %}
-        function updateClassification(targetUserId, newType) {
+        // ZERO DELAY CLASSIFICATION UPDATE (CORE / AUXILIARY)
+        function updateClassificationFast(targetUserId, newType) {
             document.getElementById('type-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-classification-text');
+            const btn = document.getElementById('type-btn-main');
+
             if (txt) {
                 txt.innerText = newType === 'Core' ? '⭐ CORE VOLUNTEER' : '🤝 AUXILIARY VOLUNTEER';
+            }
+            if (btn) {
+                btn.className = newType === 'Core'
+                    ? "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                    : "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100";
             }
 
             fetch('/update-volunteer-classification', {
@@ -1375,21 +1382,18 @@ PROFILE_TEMPLATE = """
             })
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
-                    window.location.reload();
-                } else {
+                if (!data.success) {
                     alert(data.message || "Failed to update classification.");
                 }
             })
-            .catch(() => alert("Network error."));
+            .catch(() => {});
         }
 
-        // INSTANT ZERO-DELAY UPDATE PARA SA HEADER AT DROPDOWN
+        // ZERO DELAY STATUS UPDATE (ACTIVE / INACTIVE)
         function updateVolunteerStatusFast(targetUserId, newStatus) {
             document.getElementById('status-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-status-text');
             const btn = document.getElementById('status-btn-main');
-            const headerBadge = document.getElementById('header-status-badge');
 
             if (txt) {
                 txt.innerText = newStatus === 'Active' ? '🟢 ACTIVE' : '🔴 INACTIVE';
@@ -1399,12 +1403,6 @@ PROFILE_TEMPLATE = """
                     ? "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
                     : "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100";
             }
-            if (headerBadge) {
-                headerBadge.innerText = newStatus;
-                headerBadge.className = newStatus === 'Active'
-                    ? "text-[9px] px-1 py-0.5 rounded font-mono font-bold bg-emerald-600/40 text-emerald-300"
-                    : "text-[9px] px-1 py-0.5 rounded font-mono font-bold bg-rose-600/40 text-rose-300";
-            }
 
             fetch('/update-volunteer-status', {
                 method: 'POST',
@@ -1413,13 +1411,11 @@ PROFILE_TEMPLATE = """
             })
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
-                    window.location.reload();
-                } else {
+                if (!data.success) {
                     alert(data.message || "Failed to update status.");
                 }
             })
-            .catch(() => alert("Network error."));
+            .catch(() => {});
         }
         {% endif %}
 
@@ -1555,7 +1551,7 @@ PROFILE_TEMPLATE = """
                     }
                 })
                 .catch(() => {});
-        }, 2000);
+        }, 3000);
     </script>
 </body>
 </html>
