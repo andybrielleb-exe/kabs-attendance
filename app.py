@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v32")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v33")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -785,16 +785,29 @@ MAIN_TEMPLATE = """
                 </form>
             </div>
 
-            <!-- KABS VOLUNTEER MANUAL SECTION -->
+            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION NA MAY ARROW TOGGLE -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
+                <!-- CLICKABLE HEADER NA MAY ARROW -->
+                <button type="button" onclick="toggleManualAccordion()" class="w-full p-4 sm:p-5 bg-slate-900 hover:bg-slate-800 text-white flex justify-between items-center transition-colors text-left outline-none cursor-pointer">
                     <div>
-                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                        <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
+                        <h3 class="text-sm sm:text-base font-extrabold tracking-wide flex items-center gap-2">
+                            <span>📖</span> KABS YOUTH VOLUNTEERS PROGRAM MANUAL
+                        </h3>
+                        <p class="text-[11px] text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
                     </div>
-                </div>
+                    <!-- ARROW BUTTON ICON NA UMIIKOT -->
+                    <div class="flex items-center gap-2 pl-3 flex-shrink-0">
+                        <span id="accordion-status-label" class="text-[11px] text-blue-300 font-semibold hidden sm:inline">Click to open</span>
+                        <div id="accordion-arrow" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 transition-transform duration-300">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </button>
 
-                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                <!-- COLLAPSIBLE CONTENT (DEFAULT: HIDDEN) -->
+                <div id="accordion-content" class="hidden border-t border-slate-200 p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify transition-all duration-300">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
                         <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
@@ -929,6 +942,25 @@ MAIN_TEMPLATE = """
         function handleLogoutClick() {
             clearLoginStorage();
             window.location.href = '/logout';
+        }
+
+        // --- ARROW TOGGLE PARA SA KABS MANUAL ACCORDION ---
+        function toggleManualAccordion() {
+            const content = document.getElementById('accordion-content');
+            const arrow = document.getElementById('accordion-arrow');
+            const label = document.getElementById('accordion-status-label');
+
+            if (!content || !arrow) return;
+
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                arrow.classList.add('rotate-180');
+                if (label) label.innerText = "Click to close";
+            } else {
+                content.classList.add('hidden');
+                arrow.classList.remove('rotate-180');
+                if (label) label.innerText = "Click to open";
+            }
         }
 
         function toggleSelectAll(masterCheckbox) {
@@ -1423,7 +1455,7 @@ PROFILE_TEMPLATE = """
                 {% endif %}
             </form>
 
-            <!-- DANGER ZONE: ADMIN-ONLY DELETE ACCOUNT -->
+            <!-- DANGER ZONE -->
             {% if is_admin %}
             <div class="pt-6 border-t border-rose-200">
                 <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
