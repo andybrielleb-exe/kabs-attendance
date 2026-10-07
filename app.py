@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v30")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v31")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -94,6 +94,19 @@ def calculate_duration(time_in_str, time_out_str):
             return f"{minutes}m"
     except Exception:
         return None
+
+
+def parse_duration_to_minutes(dur_str):
+    if not dur_str:
+        return -1
+    total = 0
+    h_match = re.search(r"(\d+)\s*h", dur_str)
+    m_match = re.search(r"(\d+)\s*m", dur_str)
+    if h_match:
+        total += int(h_match.group(1)) * 60
+    if m_match:
+        total += int(m_match.group(1))
+    return total
 
 
 def is_admin_user(user_dict):
@@ -561,11 +574,11 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW: PUNCH CARD AT PASS -->
+            <!-- LOGGED IN VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if user.get('volunteer_status') != 'Active' %}
-                        <!-- HARANG PARA SA INACTIVE VOLUNTEER: BAWAL MAG-TIME IN / TIME OUT -->
+                        <!-- HARANG PARA SA INACTIVE VOLUNTEER -->
                         <div class="text-center py-6 space-y-3">
                             <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
                                 🔒
@@ -580,7 +593,6 @@ MAIN_TEMPLATE = """
                             </button>
                         </div>
                     {% else %}
-                        <!-- AKTIBONG ATTENDANCE LOGGING -->
                         {% if active_record %}
                             <div class="flex items-center justify-between mb-2">
                                 <h2 class="text-base font-bold text-slate-900">Active Duty Session</h2>
@@ -613,76 +625,91 @@ MAIN_TEMPLATE = """
 
                             <form action="/log-self-attendance" method="POST">
                                 <button type="submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow transition-all flex items-center justify-center gap-2">
-                                    <span>🔴</span> Punch Time Out
-                                </button>
-                            </form>
-                        {% else %}
-                            <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
-                            <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
-                            
-                            <form action="/log-self-attendance" method="POST" class="space-y-3">
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
-                                    <input type="text" name="agenda" required placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
-                                    <input type="text" name="task" required placeholder="e.g. Waste Segregation" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
-                                </div>
-                                <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2">
-                                    <span>🟢</span> Punch Time In
-                                </button>
-                            </form>
+                                <span>🔴</span> Punch Time Out
+                            </button>
+                        </form>
+                    {% else %}
+                        <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
+                        <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
+                        
+                        <form action="/log-self-attendance" method="POST" class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
+                                <input type="text" name="agenda" required placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
+                                <input type="text" name="task" required placeholder="e.g. Waste Segregation" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            </div>
+                            <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2">
+                                <span>🟢</span> Punch Time In
+                            </button>
+                        </form>
+                    {% endif %}
+                {% endif %}
+            </div>
+
+            <!-- OFFICIAL QR CODE PASS -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
+                <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
+                    Official Pass
+                </span>
+                <div class="my-3 flex justify-center">
+                    <img src="/qr-code/{{ user.get('volunteer_code') }}" alt="QR Code" class="w-36 h-36 rounded-lg border p-1 bg-white shadow-sm">
+                </div>
+                <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.get('volunteer_code') }}</div><br>
+                <div class="flex justify-center">
+                    <a href="/qr-code/{{ user.get('volunteer_code') }}" download="{{ user.get('volunteer_code') }}_pass.png" class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- ATTENDANCE LOG: MAY SORTING, SELECT ALL, AT BATCH DELETE PARA SA ADMIN -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
+                <div>
+                    <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                    <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo.</p>
+                </div>
+                
+                <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+                    <!-- SORT DROPDOWN -->
+                    <form method="GET" action="/" class="flex items-center gap-1.5 text-xs">
+                        <label for="sort_by" class="font-semibold text-slate-600">Sort by:</label>
+                        <select name="sort_by" id="sort_by" onchange="this.form.submit()" class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="latest" {% if current_sort == 'latest' %}selected{% endif %}>Latest Duty</option>
+                            <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name (A-Z)</option>
+                            <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name (Z-A)</option>
+                            <option value="hours_desc" {% if current_sort == 'hours_desc' %}selected{% endif %}>Highest Hours</option>
+                        </select>
+                    </form>
+
+                    {% if is_admin %}
+                        <!-- BATCH DELETE BUTTON (LILITAW KAPAG MAY NAKA-CHECK) -->
+                        <button type="button" id="batch-delete-btn" onclick="submitBatchDelete()" class="hidden items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all">
+                            🗑️ Delete Selected (<span id="selected-count">0</span>)
+                        </button>
+
+                        {% if logs and logs|length > 0 %}
+                            <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Export Excel
+                            </a>
                         {% endif %}
                     {% endif %}
-                </div>
-
-                <!-- OFFICIAL QR CODE PASS -->
-                <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
-                    <span class="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase mb-2">
-                        Official Pass
-                    </span>
-                    <div class="my-3 flex justify-center">
-                        <img src="/qr-code/{{ user.get('volunteer_code') }}" alt="QR Code" class="w-36 h-36 rounded-lg border p-1 bg-white shadow-sm">
-                    </div>
-                    <div class="text-xs font-mono font-bold bg-slate-100 py-1.5 px-3 rounded inline-block mb-3 border border-dashed border-slate-400">{{ user.get('volunteer_code') }}</div><br>
-                    <div class="flex justify-center">
-                        <a href="/qr-code/{{ user.get('volunteer_code') }}" download="{{ user.get('volunteer_code') }}_pass.png" class="inline-block py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">Download Pass</a>
-                    </div>
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG: NASA TAAS NG MANUAL -->
-            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-4 border-b flex justify-between items-center bg-slate-50/50">
-                    <div>
-                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Listahan ng lahat ng pumasok, lumabas, at kabuuang oras ng serbisyo (PST Time).</p>
-                    </div>
-                    
-                    {% if is_admin %}
-                        {% if logs and logs|length > 0 %}
-                            <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-sm transition-all">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                Export to Excel
-                            </a>
-                        {% else %}
-                            <button type="button" disabled class="inline-flex items-center gap-1.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold px-3 py-2 rounded-lg cursor-not-allowed opacity-60">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                Export to Excel (No Logs)
-                            </button>
-                        {% endif %}
-                    {% endif %}
-                </div>
-
+            <form id="batch-delete-form" action="/delete-logs-batch" method="POST">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-xs sm:text-sm">
                         <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
                             <tr>
+                                {% if is_admin %}
+                                <th class="py-3 px-3 text-center w-8">
+                                    <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)" class="w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
+                                </th>
+                                {% endif %}
                                 <th class="py-3 px-4">Volunteer</th>
                                 <th class="py-3 px-4">Agenda</th>
                                 <th class="py-3 px-4">Task</th>
@@ -697,6 +724,15 @@ MAIN_TEMPLATE = """
                         <tbody class="divide-y divide-slate-100">
                             {% for log in logs %}
                             <tr>
+                                {% if is_admin %}
+                                <td class="py-3 px-3 text-center">
+                                    {% if log[4] %}
+                                    <input type="checkbox" name="log_ids" value="{{ log[5] }}" onchange="updateSelectedCount()" class="row-checkbox w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
+                                    {% else %}
+                                    <span class="text-slate-300 text-[10px]" title="Bawal burahin habang naka-clocked in">🔒</span>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
                                 <td class="py-3 px-4 font-bold">
                                     {% if is_admin %}
                                         <a href="/profile/{{ log[7] }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
@@ -730,11 +766,9 @@ MAIN_TEMPLATE = """
                                 {% if is_admin %}
                                 <td class="py-3 px-4 text-center">
                                     {% if log[4] %}
-                                        <form action="/delete-log/{{ log[5] }}" method="POST" onsubmit="return confirm('Sigurado ka bang buburahin ang attendance record na ito?');" class="inline">
-                                            <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                                Delete
-                                            </button>
-                                        </form>
+                                        <button type="button" onclick="deleteSingleLog({{ log[5] }})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                            Delete
+                                        </button>
                                     {% else %}
                                         <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
                                             Clocked In
@@ -744,41 +778,42 @@ MAIN_TEMPLATE = """
                                 {% endif %}
                             </tr>
                             {% else %}
-                            <tr><td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
+                            <tr><td colspan="{% if is_admin %}8{% else %}6{% endif %}" class="text-center py-6 text-slate-400">Walang attendance records sa ngayon.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </form>
+        </div>
 
-            <!-- BUONG KABS VOLUNTEER MANUAL -->
-            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
-                    <div>
-                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                        <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
-                    </div>
-                </div>
-
-                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
-                    </section>
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
-                    </section>
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <p>Action, Bayanihan, at Service.</p>
-                    </section>
-                    <section class="space-y-2 pb-2">
-                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
-                        <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
-                    </section>
+        <!-- BUONG KABS VOLUNTEER MANUAL: NASA PINAKAIBABA -->
+        <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
+                <div>
+                    <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                    <p class="text-xs text-slate-300">Sangguniang Kabataan ng Barangay Payatas, Lungsod Quezon</p>
                 </div>
             </div>
+
+            <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
+                </section>
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
+                </section>
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                    <p>Action, Bayanihan, at Service.</p>
+                </section>
+                <section class="space-y-2 pb-2">
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
+                </section>
+            </div>
+        </div>
         {% endif %}
     </main>
 
@@ -823,6 +858,9 @@ MAIN_TEMPLATE = """
         </div>
     </div>
 
+    <!-- HIDDEN FORM PARA SA ISA-ISANG PAGBURA -->
+    <form id="single-delete-form" method="POST" action="" class="hidden"></form>
+
     <script>
         const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
@@ -835,6 +873,54 @@ MAIN_TEMPLATE = """
         function handleLogoutClick() {
             clearLoginStorage();
             window.location.href = '/logout';
+        }
+
+        // --- SELECT ALL AT BATCH DELETE FUNCTIONS ---
+        function toggleSelectAll(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            const count = checkedBoxes.length;
+            const batchBtn = document.getElementById('batch-delete-btn');
+            const countSpan = document.getElementById('selected-count');
+
+            if (countSpan) countSpan.innerText = count;
+
+            if (batchBtn) {
+                if (count > 0) {
+                    batchBtn.classList.remove('hidden');
+                    batchBtn.classList.add('inline-flex');
+                } else {
+                    batchBtn.classList.add('hidden');
+                    batchBtn.classList.remove('inline-flex');
+                }
+            }
+
+            const allBoxes = document.querySelectorAll('.row-checkbox');
+            const masterCheckbox = document.getElementById('select-all-checkbox');
+            if (masterCheckbox && allBoxes.length > 0) {
+                masterCheckbox.checked = (checkedBoxes.length === allBoxes.length);
+            }
+        }
+
+        function submitBatchDelete() {
+            const count = document.querySelectorAll('.row-checkbox:checked').length;
+            if (count === 0) return;
+            if (confirm(`Sigurado ka bang nais mong burahin ang ${count} napiling attendance record(s)?`)) {
+                document.getElementById('batch-delete-form').submit();
+            }
+        }
+
+        function deleteSingleLog(logId) {
+            if (confirm('Sigurado ka bang buburahin ang attendance record na ito?')) {
+                const form = document.getElementById('single-delete-form');
+                form.action = `/delete-log/${logId}`;
+                form.submit();
+            }
         }
 
         let hasReadToEnd = false;
@@ -1552,6 +1638,7 @@ def index():
     session_user = session.get("user")
     user = None
     active_record = None
+    sort_by = request.args.get("sort_by", "latest")
 
     if session_user:
         user = get_fresh_user_profile(session_user["id"])
@@ -1569,28 +1656,41 @@ def index():
         )
         active_record = cursor.fetchone()
 
+    # Dynamic SQL sorting
+    order_clause = "ORDER BY attendance.id DESC"
+    if sort_by == "name_asc":
+        order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
+    elif sort_by == "name_desc":
+        order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
+
     cursor.execute(
-        """
+        f"""
         SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
         FROM attendance
         JOIN volunteers ON attendance.volunteer_id = volunteers.id
-        ORDER BY attendance.id DESC
+        {order_clause}
         LIMIT 100
         """
     )
-    logs = cursor.fetchall()
+    raw_logs = cursor.fetchall()
     cursor.close()
     conn.close()
+
+    # Python sort para sa volunteer hours kung pinili ang hours_desc
+    if sort_by == "hours_desc":
+        logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6]), reverse=True)
+    else:
+        logs = raw_logs
 
     is_admin = is_admin_user(user)
 
     if os.path.exists(os.path.join("templates", "index.html")):
         return render_template(
-            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin
+            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
         )
 
     return render_template_string(
-        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin
+        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
     )
 
 
@@ -1983,7 +2083,6 @@ def login():
     return redirect(url_for("index"))
 
 
-# ATTENDANCE RECORDING NA MAY CHECK SA INACTIVE STATUS
 @app.route("/log-self-attendance", methods=["POST"])
 def log_self_attendance():
     session_user = session.get("user")
@@ -1991,7 +2090,6 @@ def log_self_attendance():
         flash("Kailangan munang mag-login.", "danger")
         return redirect(url_for("index"))
 
-    # Suriin kung Active ang volunteer
     profile = get_fresh_user_profile(session_user["id"])
     if not profile or profile.get("volunteer_status") != "Active":
         flash("❌ Naka-Inactive ang iyong volunteer status. Makipag-ugnayan sa SK Admin bago makapagtala ng attendance.", "warning")
@@ -2147,6 +2245,7 @@ def page_not_found(e):
     return redirect(url_for("index"))
 
 
+# ISA-ISANG PAGBURA NG LOG RECORD
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
 def delete_log(log_id):
     session_user = session.get("user")
@@ -2186,6 +2285,52 @@ def delete_log(log_id):
 
     cursor.close()
     conn.close()
+    return redirect(url_for("index"))
+
+
+# BATCH PAGBURA NG MARAMING LOG RECORDS (SELECT ALL)
+@app.route("/delete-logs-batch", methods=["POST"])
+def delete_logs_batch():
+    session_user = session.get("user")
+    if not session_user:
+        flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    current_user = get_fresh_user_profile(session_user["id"])
+    if not is_admin_user(current_user):
+        flash("❌ Tanging ang SK Admin lamang ang may pahintulot na magbura ng attendance records.", "danger")
+        return redirect(url_for("index"))
+
+    log_ids = request.form.getlist("log_ids")
+    if not log_ids:
+        flash("Walang piniling attendance records na buburahin.", "warning")
+        return redirect(url_for("index"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    deleted_count = 0
+
+    for lid in log_ids:
+        try:
+            lid_int = int(lid)
+            ph = "%s" if USE_POSTGRES else "?"
+            cursor.execute(f"SELECT time_out FROM attendance WHERE id = {ph}", (lid_int,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                cursor.execute(f"DELETE FROM attendance WHERE id = {ph}", (lid_int,))
+                deleted_count += 1
+        except Exception:
+            pass
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    if deleted_count > 0:
+        flash(f"🗑️ Matagumpay na nabura ang {deleted_count} napiling attendance log(s)!", "success")
+    else:
+        flash("Walang naburang record. Siguraduhing naka-time out na ang mga napiling record.", "warning")
+
     return redirect(url_for("index"))
 
 
