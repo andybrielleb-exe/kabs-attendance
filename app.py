@@ -35,7 +35,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v29")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v30")
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -135,7 +135,7 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS attendance (
                 id SERIAL PRIMARY KEY,
-                volunteer_id INTEGER REFERENCES volunteers(id) ON DELETE CASCADE,
+                volunteer_id INTEGER REFERENCES volunteers(id),
                 agenda TEXT,
                 task TEXT,
                 time_in TEXT,
@@ -194,7 +194,7 @@ def init_db():
                 time_in TEXT,
                 time_out TEXT,
                 total_hours TEXT,
-                FOREIGN KEY (volunteer_id) REFERENCES volunteers (id) ON DELETE CASCADE
+                FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
             );
             """
         )
@@ -561,61 +561,79 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW -->
+            <!-- LOGGED IN VIEW: PUNCH CARD AT PASS -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    {% if active_record %}
-                        <div class="flex items-center justify-between mb-2">
-                            <h2 class="text-base font-bold text-slate-900">Active Duty Session</h2>
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
-                                ● Clocked In
-                            </span>
+                    {% if user.get('volunteer_status') != 'Active' %}
+                        <!-- HARANG PARA SA INACTIVE VOLUNTEER: BAWAL MAG-TIME IN / TIME OUT -->
+                        <div class="text-center py-6 space-y-3">
+                            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
+                                🔒
+                            </div>
+                            <h3 class="text-sm font-bold text-slate-900">Attendance Logging Locked</h3>
+                            <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-left text-xs text-rose-800 leading-relaxed">
+                                ⚠️ <b>Naka-Inactive ang iyong volunteer status.</b><br>
+                                Hindi ka makakapagtala ng oras (Time In o Time Out) sa ngayon. Makipag-ugnayan sa SK Admin upang muling i-activate ang iyong account.
+                            </div>
+                            <button type="button" disabled class="w-full py-2.5 bg-slate-200 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed">
+                                Punch Attendance Disabled
+                            </button>
                         </div>
-                        <p class="text-xs text-slate-500 mb-4">Awtomatikong mag-ti-time out kapag nag-time out ka sa ibang device.</p>
-
-                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-slate-500 font-medium">Agenda:</span>
-                                <span class="font-bold text-slate-800">{{ active_record[1] }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-500 font-medium">Assigned Task:</span>
-                                <span class="font-bold text-slate-800">{{ active_record[2] }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-500 font-medium">Time In:</span>
-                                <span class="font-bold text-emerald-700" id="session-time-in">{{ active_record[3] }}</span>
-                            </div>
-                            <div class="flex justify-between items-center pt-1 border-t border-slate-200">
-                                <span class="text-slate-500 font-medium">Running Duty Time:</span>
-                                <span class="font-mono font-bold text-blue-700 text-sm bg-blue-50 px-2 py-0.5 rounded border border-blue-200" id="live-timer">
-                                    00:00:00
+                    {% else %}
+                        <!-- AKTIBONG ATTENDANCE LOGGING -->
+                        {% if active_record %}
+                            <div class="flex items-center justify-between mb-2">
+                                <h2 class="text-base font-bold text-slate-900">Active Duty Session</h2>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 animate-pulse">
+                                    ● Clocked In
                                 </span>
                             </div>
-                        </div>
+                            <p class="text-xs text-slate-500 mb-4">Awtomatikong mag-ti-time out kapag nag-time out ka sa ibang device.</p>
 
-                        <form action="/log-self-attendance" method="POST">
-                            <button type="submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow transition-all flex items-center justify-center gap-2">
-                                <span>🔴</span> Punch Time Out
-                            </button>
-                        </form>
-                    {% else %}
-                        <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
-                        <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
-                        
-                        <form action="/log-self-attendance" method="POST" class="space-y-3">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
-                                <input type="text" name="agenda" required placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 space-y-2 text-xs">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500 font-medium">Agenda:</span>
+                                    <span class="font-bold text-slate-800">{{ active_record[1] }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500 font-medium">Assigned Task:</span>
+                                    <span class="font-bold text-slate-800">{{ active_record[2] }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500 font-medium">Time In:</span>
+                                    <span class="font-bold text-emerald-700" id="session-time-in">{{ active_record[3] }}</span>
+                                </div>
+                                <div class="flex justify-between items-center pt-1 border-t border-slate-200">
+                                    <span class="text-slate-500 font-medium">Running Duty Time:</span>
+                                    <span class="font-mono font-bold text-blue-700 text-sm bg-blue-50 px-2 py-0.5 rounded border border-blue-200" id="live-timer">
+                                        00:00:00
+                                    </span>
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
-                                <input type="text" name="task" required placeholder="e.g. Waste Segregation" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
-                            </div>
-                            <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2">
-                                <span>🟢</span> Punch Time In
-                            </button>
-                        </form>
+
+                            <form action="/log-self-attendance" method="POST">
+                                <button type="submit" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                                    <span>🔴</span> Punch Time Out
+                                </button>
+                            </form>
+                        {% else %}
+                            <h2 class="text-base font-bold text-slate-900 mb-1">Punch Time In</h2>
+                            <p class="text-xs text-slate-500 mb-4">Ilagay ang agenda at task para makapag-simula ng attendance.</p>
+                            
+                            <form action="/log-self-attendance" method="POST" class="space-y-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Agenda / Event</label>
+                                    <input type="text" name="agenda" required placeholder="e.g. Clean-Up Drive / Assembly" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Assigned Task</label>
+                                    <input type="text" name="task" required placeholder="e.g. Waste Segregation" class="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none">
+                                </div>
+                                <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2">
+                                    <span>🟢</span> Punch Time In
+                                </button>
+                            </form>
+                        {% endif %}
                     {% endif %}
                 </div>
 
@@ -745,19 +763,19 @@ MAIN_TEMPLATE = """
                 <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
+                        <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
                     </section>
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
                     </section>
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <p>Action, Bayanihan, at Service[cite: 5].</p>
+                        <p>Action, Bayanihan, at Service.</p>
                     </section>
                     <section class="space-y-2 pb-2">
                         <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
-                        <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
+                        <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
                     </section>
                 </div>
             </div>
@@ -778,19 +796,19 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
+                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
                 </section>
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
                 </section>
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <p>Action, Bayanihan, at Service[cite: 5].</p>
+                    <p>Action, Bayanihan, at Service.</p>
                 </section>
                 <section class="space-y-2 pb-2">
                     <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
-                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
                 </section>
             </div>
 
@@ -868,7 +886,7 @@ MAIN_TEMPLATE = """
             }
             const label = document.getElementById('agree_label');
             if (label) {
-                label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual[cite: 5].";
+                label.innerHTML = "✅ <b>Nabasa ko na hanggang dulo</b> at sumasang-ayon sa lahat ng patakaran ng KABS Volunteer Manual.";
                 label.classList.remove('text-slate-500');
                 label.classList.add('text-slate-800');
             }
@@ -1164,7 +1182,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS (0-DELAY DOM UPDATE) -->
+                    <!-- 2. STATUS -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1263,23 +1281,6 @@ PROFILE_TEMPLATE = """
                 </div>
                 {% endif %}
             </form>
-
-            <!-- DANGER ZONE: ADMIN-ONLY DELETE ACCOUNT -->
-            {% if is_admin %}
-            <div class="pt-6 border-t border-rose-200">
-                <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                        <h4 class="text-xs font-bold text-rose-900">Danger Zone: Admin Management</h4>
-                        <p class="text-[11px] text-rose-700">Burahin ang volunteer account na ito kasama ang lahat ng attendance records nito.</p>
-                    </div>
-                    <form action="/delete-volunteer-account/{{ profile_user.get('id') }}" method="POST" onsubmit="return confirm('SIGURADO KA BA? Mabubura ang volunteer account na si {{ profile_user.get('name') }} pati ang lahat ng attendance records nito. Hindi na ito maibabalik.');">
-                        <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition-all whitespace-nowrap">
-                            🗑️ Delete Account
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </main>
 
@@ -1344,7 +1345,7 @@ PROFILE_TEMPLATE = """
         }
 
         {% if is_admin %}
-        // ZERO-DELAY CLASSIFICATION UPDATE (CORE / AUXILIARY)
+        // ZERO-DELAY CLASSIFICATION UPDATE
         function updateClassificationFast(targetUserId, newType) {
             pauseSyncTemporarily();
             document.getElementById('type-dropdown-menu').classList.add('hidden');
@@ -1374,7 +1375,7 @@ PROFILE_TEMPLATE = """
             .catch(() => {});
         }
 
-        // ZERO-DELAY STATUS UPDATE (ACTIVE / INACTIVE)
+        // ZERO-DELAY STATUS UPDATE
         function updateVolunteerStatusFast(targetUserId, newStatus) {
             pauseSyncTemporarily();
             document.getElementById('status-dropdown-menu').classList.add('hidden');
@@ -1745,44 +1746,6 @@ def update_volunteer_status():
     return jsonify({"success": True, "state_hash": new_hash})
 
 
-@app.route("/delete-volunteer-account/<int:user_id>", methods=["POST"])
-def delete_volunteer_account(user_id):
-    session_user = session.get("user")
-    if not session_user:
-        flash("Kailangan munang mag-login.", "danger")
-        return redirect(url_for("index"))
-
-    current_user = get_fresh_user_profile(session_user["id"])
-    if not is_admin_user(current_user):
-        flash("❌ Tanging ang SK Admin lamang ang may karapatang magbura ng account.", "danger")
-        return redirect(url_for("index"))
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-
-    cursor.execute(f"SELECT name FROM volunteers WHERE id = {ph}", (user_id,))
-    target = cursor.fetchone()
-
-    if target:
-        v_name = target[0]
-        cursor.execute(f"DELETE FROM attendance WHERE volunteer_id = {ph}", (user_id,))
-        cursor.execute(f"DELETE FROM volunteers WHERE id = {ph}", (user_id,))
-        conn.commit()
-        flash(f"🗑️ Matagumpay na nabura ang account ni {v_name} pati ang kanyang logs.", "success")
-    else:
-        flash("Hindi natagpuan ang account.", "danger")
-
-    cursor.close()
-    conn.close()
-
-    if session_user["id"] == user_id:
-        session.clear()
-        return redirect(url_for("index"))
-
-    return redirect(url_for("index"))
-
-
 @app.route("/edit-profile/<int:user_id>", methods=["POST"])
 def edit_profile(user_id):
     session_user = session.get("user")
@@ -2020,11 +1983,18 @@ def login():
     return redirect(url_for("index"))
 
 
+# ATTENDANCE RECORDING NA MAY CHECK SA INACTIVE STATUS
 @app.route("/log-self-attendance", methods=["POST"])
 def log_self_attendance():
     session_user = session.get("user")
     if not session_user:
         flash("Kailangan munang mag-login.", "danger")
+        return redirect(url_for("index"))
+
+    # Suriin kung Active ang volunteer
+    profile = get_fresh_user_profile(session_user["id"])
+    if not profile or profile.get("volunteer_status") != "Active":
+        flash("❌ Naka-Inactive ang iyong volunteer status. Makipag-ugnayan sa SK Admin bago makapagtala ng attendance.", "warning")
         return redirect(url_for("index"))
 
     conn = get_db_connection()
@@ -2083,7 +2053,7 @@ def register():
 
     if not agree_terms:
         flash(
-            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register[cite: 5].",
+            "❌ Kailangan mong buksan at i-scroll ang KABS Volunteer Manual hanggang dulo bago makapag-register.",
             "danger",
         )
         return redirect(url_for("index"))
