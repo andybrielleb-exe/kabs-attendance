@@ -29,7 +29,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v43")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_stable")
 
 # Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
@@ -116,7 +116,7 @@ def get_db_connection():
     global DATABASE_URL
     if DATABASE_URL and psycopg2:
         try:
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
             return conn, True
         except Exception:
             pass
@@ -503,7 +503,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW: TANGING LOGIN AT REGISTRATION LAMANG ANG MAKIKITA -->
+            <!-- LOGGED OUT VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -675,7 +675,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG TABLE: NAKIKITA LAMANG KAPAG NAKA-LOGIN (SA TAAS NG MANUAL) -->
+            <!-- ATTENDANCE LOG TABLE (SA LOOB LAMANG NG LOGIN) -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
                     <div>
@@ -795,7 +795,7 @@ MAIN_TEMPLATE = """
                 </form>
             </div>
 
-            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION (NASA PINAKAIBABA) -->
+            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <button type="button" onclick="toggleManualAccordion()" class="w-full p-4 sm:p-5 bg-slate-900 hover:bg-slate-800 text-white flex justify-between items-center transition-colors text-left outline-none cursor-pointer">
                     <div>
@@ -1691,6 +1691,80 @@ PROFILE_TEMPLATE = """
 </body>
 </html>
 """
+
+
+# HOMEPAGE ROOT ROUTE
+@app.route("/")
+def index():
+    try:
+        session_user = session.get("user")
+        user = None
+        active_record = None
+        sort_by = request.args.get("sort_by", "latest")
+
+        if session_user and isinstance(session_user, dict):
+            user = get_fresh_user_profile(session_user.get("id"))
+            if not user:
+                session.clear()
+
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
+
+        if user:
+            try:
+                cursor.execute(
+                    f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+                    (user["id"],),
+                )
+                active_record = cursor.fetchone()
+            except Exception:
+                if is_pg:
+                    conn.rollback()
+
+        order_clause = "ORDER BY attendance.id DESC"
+        if sort_by == "name_asc":
+            order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
+        elif sort_by == "name_desc":
+            order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
+
+        try:
+            cursor.execute(
+                f"""
+                SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
+                FROM attendance
+                LEFT JOIN volunteers ON attendance.volunteer_id = volunteers.id
+                {order_clause}
+                LIMIT 100
+                """
+            )
+            raw_logs = cursor.fetchall() or []
+        except Exception:
+            raw_logs = []
+            if is_pg:
+                conn.rollback()
+
+        cursor.close()
+        conn.close()
+
+        if sort_by == "hours_desc":
+            logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6] if len(x) > 6 else 0), reverse=True)
+        else:
+            logs = raw_logs
+
+        is_admin = is_admin_user(user)
+
+        return render_template_string(
+            MAIN_TEMPLATE,
+            user=user,
+            logs=logs,
+            active_record=active_record,
+            is_admin=is_admin,
+            current_sort=sort_by,
+        )
+    except Exception as e:
+        session.clear()
+        return f"<h3>Loading portal... Please refresh the page.</h3><p>{str(e)}</p>", 200
 
 
 @app.route("/qr-code/<volunteer_code>")
