@@ -29,7 +29,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v40")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v41")
 
 # Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
@@ -1693,6 +1693,80 @@ PROFILE_TEMPLATE = """
 """
 
 
+# HOMEPAGE ROOT ROUTE
+@app.route("/")
+def index():
+    try:
+        session_user = session.get("user")
+        user = None
+        active_record = None
+        sort_by = request.args.get("sort_by", "latest")
+
+        if session_user and isinstance(session_user, dict):
+            user = get_fresh_user_profile(session_user.get("id"))
+            if not user:
+                session.clear()
+
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
+
+        if user:
+            try:
+                cursor.execute(
+                    f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+                    (user["id"],),
+                )
+                active_record = cursor.fetchone()
+            except Exception:
+                if is_pg:
+                    conn.rollback()
+
+        order_clause = "ORDER BY attendance.id DESC"
+        if sort_by == "name_asc":
+            order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
+        elif sort_by == "name_desc":
+            order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
+
+        try:
+            cursor.execute(
+                f"""
+                SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
+                FROM attendance
+                LEFT JOIN volunteers ON attendance.volunteer_id = volunteers.id
+                {order_clause}
+                LIMIT 100
+                """
+            )
+            raw_logs = cursor.fetchall() or []
+        except Exception:
+            raw_logs = []
+            if is_pg:
+                conn.rollback()
+
+        cursor.close()
+        conn.close()
+
+        if sort_by == "hours_desc":
+            logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6] if len(x) > 6 else 0), reverse=True)
+        else:
+            logs = raw_logs
+
+        is_admin = is_admin_user(user)
+
+        return render_template_string(
+            MAIN_TEMPLATE,
+            user=user,
+            logs=logs,
+            active_record=active_record,
+            is_admin=is_admin,
+            current_sort=sort_by,
+        )
+    except Exception as e:
+        session.clear()
+        return f"<h3>Loading portal... Please refresh the page.</h3><p>{str(e)}</p>", 200
+
+
 @app.route("/qr-code/<volunteer_code>")
 def generate_qr_code(volunteer_code):
     clean_code = str(volunteer_code).strip().upper()
@@ -2241,12 +2315,13 @@ def logout():
 
 @app.errorhandler(404)
 def page_not_found(e):
-    return "Not Found", 404
+    return redirect(url_for("index"))
 
 
 @app.errorhandler(500)
 def server_error(e):
-    return "Internal Server Error. Please refresh.", 500
+    session.clear()
+    return redirect(url_for("index"))
 
 
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
