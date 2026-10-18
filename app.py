@@ -29,9 +29,9 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v36")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v38")
 
-# Philippine Time Zone (UTC+8)
+# Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
 
 app.config.update(
@@ -107,7 +107,7 @@ def parse_duration_to_minutes(dur_str):
 
 
 def is_admin_user(user_dict):
-    if not user_dict:
+    if not user_dict or not isinstance(user_dict, dict):
         return False
     email = str(user_dict.get("email", "")).strip().lower()
     code = str(user_dict.get("volunteer_code", "")).strip().upper()
@@ -333,6 +333,8 @@ def authenticate_user_by_qr(raw_qr_input):
 
 
 def get_fresh_user_profile(user_id):
+    if not user_id:
+        return None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -739,7 +741,7 @@ MAIN_TEMPLATE = """
                                     {% endif %}
                                     <td class="py-3 px-4 font-bold">
                                         {% if is_admin %}
-                                            <a href="/profile/{{ log[7] }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
+                                            <a href="/profile/{{ log[7]|default(0) }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
                                                 <span>👤</span> {{ log[0] }}
                                             </a>
                                         {% else %}
@@ -797,7 +799,7 @@ MAIN_TEMPLATE = """
                         <h3 class="text-sm sm:text-base font-extrabold tracking-wide flex items-center gap-2">
                             <span>📖</span> KABS YOUTH VOLUNTEERS PROGRAM MANUAL
                         </h3>
-                        <p class="text-[11px] text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
+                        <p class="text-[11px] text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City[cite: 5]</p>
                     </div>
                     <div class="flex items-center gap-2 pl-3 flex-shrink-0">
                         <span id="accordion-status-label" class="text-[11px] text-blue-300 font-semibold hidden sm:inline">Click to open</span>
@@ -812,17 +814,17 @@ MAIN_TEMPLATE = """
                 <div id="accordion-content" class="hidden border-t border-slate-200 p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify transition-all duration-300">
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions.</p>
+                        <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025.</p>
+                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
                         <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance.</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers.</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities.</li>
+                            <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                            <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
                         </ul>
                     </section>
 
@@ -831,27 +833,27 @@ MAIN_TEMPLATE = """
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                                 <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change.</p>
+                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
                             </div>
                             <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                                 <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility.</p>
+                                <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
                             </div>
                             <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
                                 <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives.</p>
+                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
                             </div>
                         </div>
                     </section>
 
                     <section class="space-y-2 border-b pb-4">
                         <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics).</p>
+                        <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
                     </section>
 
                     <section class="space-y-2 pb-2">
                         <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition.</p>
+                        <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect[cite: 5]. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited[cite: 5]. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition[cite: 5].</p>
                     </section>
                 </div>
             </div>
@@ -864,7 +866,7 @@ MAIN_TEMPLATE = """
             <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
                 <div>
                     <h3 class="text-base sm:text-lg font-extrabold tracking-wide">KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                    <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
+                    <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City[cite: 5]</p>
                 </div>
                 <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-white text-2xl font-bold p-1 leading-none">&times;</button>
             </div>
@@ -872,25 +874,25 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
                 </section>
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
                 </section>
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <p>Action, Bayanihan, at Service.</p>
+                    <p>Action, Bayanihan, and Service[cite: 5].</p>
                 </section>
                 <section class="space-y-2 pb-2">
                     <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
-                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
                 </section>
             </div>
 
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
-                    ⬇ I-scroll pababa hanggang dulo para ma-unlock...
+                    ⬇ Scroll down to the bottom to unlock...
                 </span>
                 <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
                     I Agree (Unlock Registration)
@@ -1283,6 +1285,7 @@ PROFILE_TEMPLATE = """
                 </div>
                 
                 <div class="flex items-center gap-2">
+                    <!-- 1. CLASSIFICATION -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="type-btn-main" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1324,6 +1327,7 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
+                    <!-- 2. STATUS -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1367,6 +1371,7 @@ PROFILE_TEMPLATE = """
                 </div>
             </div>
 
+            <!-- PROFILE PHOTO SECTION -->
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 text-center space-y-3">
                 <div class="relative w-28 h-28 mx-auto">
                     {% if profile_user.get('profile_pic') %}
@@ -1394,6 +1399,7 @@ PROFILE_TEMPLATE = """
                 {% endif %}
             </div>
 
+            <!-- EDIT INFORMATION FORM -->
             <form action="/edit-profile/{{ profile_user.get('id') }}" method="POST" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Full Name</label>
@@ -1686,61 +1692,75 @@ PROFILE_TEMPLATE = """
 
 @app.route("/")
 def index():
-    session_user = session.get("user")
-    user = None
-    active_record = None
-    sort_by = request.args.get("sort_by", "latest")
+    try:
+        session_user = session.get("user")
+        user = None
+        active_record = None
+        sort_by = request.args.get("sort_by", "latest")
 
-    if session_user:
-        user = get_fresh_user_profile(session_user.get("id"))
-        if not user:
-            session.clear()
+        if session_user and isinstance(session_user, dict):
+            user = get_fresh_user_profile(session_user.get("id"))
+            if not user:
+                session.clear()
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
 
-    if user:
-        cursor.execute(
-            f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-            (user["id"],),
+        if user:
+            try:
+                cursor.execute(
+                    f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+                    (user["id"],),
+                )
+                active_record = cursor.fetchone()
+            except Exception:
+                if USE_POSTGRES:
+                    conn.rollback()
+
+        order_clause = "ORDER BY attendance.id DESC"
+        if sort_by == "name_asc":
+            order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
+        elif sort_by == "name_desc":
+            order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
+
+        try:
+            cursor.execute(
+                f"""
+                SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
+                FROM attendance
+                LEFT JOIN volunteers ON attendance.volunteer_id = volunteers.id
+                {order_clause}
+                LIMIT 100
+                """
+            )
+            raw_logs = cursor.fetchall() or []
+        except Exception:
+            raw_logs = []
+            if USE_POSTGRES:
+                conn.rollback()
+
+        cursor.close()
+        conn.close()
+
+        if sort_by == "hours_desc":
+            logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6] if len(x) > 6 else 0), reverse=True)
+        else:
+            logs = raw_logs
+
+        is_admin = is_admin_user(user)
+
+        return render_template_string(
+            MAIN_TEMPLATE,
+            user=user,
+            logs=logs,
+            active_record=active_record,
+            is_admin=is_admin,
+            current_sort=sort_by,
         )
-        active_record = cursor.fetchone()
-
-    order_clause = "ORDER BY attendance.id DESC"
-    if sort_by == "name_asc":
-        order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
-    elif sort_by == "name_desc":
-        order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
-
-    cursor.execute(
-        f"""
-        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
-        FROM attendance
-        JOIN volunteers ON attendance.volunteer_id = volunteers.id
-        {order_clause}
-        LIMIT 100
-        """
-    )
-    raw_logs = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    if sort_by == "hours_desc":
-        logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6]), reverse=True)
-    else:
-        logs = raw_logs
-
-    is_admin = is_admin_user(user)
-
-    if os.path.exists(os.path.join("templates", "index.html")):
-        return render_template(
-            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
-        )
-
-    return render_template_string(
-        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
-    )
+    except Exception as e:
+        session.clear()
+        return f"<h3>Portal is refreshing. Please reload the page.</h3><p>{str(e)}</p>", 200
 
 
 @app.route("/qr-code/<volunteer_code>")
@@ -1756,7 +1776,7 @@ def generate_qr_code(volunteer_code):
 @app.route("/sync-state")
 def sync_state():
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         state_hash = get_current_system_state_hash(None)
         return jsonify({"logged_in": False, "state_hash": state_hash})
 
@@ -1785,7 +1805,7 @@ def qr_direct_auth(token):
 @app.route("/profile")
 def profile_self():
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         flash("Please log in first to view your profile.", "danger")
         return redirect(url_for("index"))
 
@@ -1803,7 +1823,7 @@ def profile_self():
 @app.route("/profile/<int:user_id>")
 def profile_by_id(user_id):
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
@@ -2291,13 +2311,12 @@ def logout():
 
 @app.errorhandler(404)
 def page_not_found(e):
-    return redirect(url_for("index"))
+    return "Not Found", 404
 
 
 @app.errorhandler(500)
 def server_error(e):
-    session.clear()
-    return redirect(url_for("index"))
+    return "Internal Server Error. Please refresh.", 500
 
 
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
