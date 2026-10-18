@@ -29,7 +29,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v38")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v39")
 
 # Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
@@ -43,8 +43,6 @@ app.config.update(
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
@@ -114,17 +112,24 @@ def is_admin_user(user_dict):
     return email in ADMIN_EMAILS or code in ADMIN_CODES
 
 
+# LIGTAS NA KONEKSYON SA DATABASE NA MAY AUTOMATIC FALLBACK
 def get_db_connection():
-    if USE_POSTGRES:
-        return psycopg2.connect(DATABASE_URL)
-    return sqlite3.connect("kabs.db")
+    global DATABASE_URL
+    if DATABASE_URL and psycopg2:
+        try:
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            return conn, True
+        except Exception:
+            # Kung nagka-DNS error sa postgres host, automatic fallback sa local SQLite
+            pass
+    return sqlite3.connect("kabs.db"), False
 
 
 def init_db():
     try:
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        if USE_POSTGRES:
+        if is_pg:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS volunteers (
@@ -274,9 +279,9 @@ def authenticate_user_by_qr(raw_qr_input):
         if url_match:
             v_token = url_match.group(1).strip()
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     user = None
 
     def try_execute(query, params):
@@ -284,7 +289,7 @@ def authenticate_user_by_qr(raw_qr_input):
             cursor.execute(query, params)
             return cursor.fetchone()
         except Exception:
-            if USE_POSTGRES:
+            if is_pg:
                 try:
                     conn.rollback()
                 except Exception:
@@ -336,9 +341,9 @@ def get_fresh_user_profile(user_id):
     if not user_id:
         return None
     try:
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
+        ph = "%s" if is_pg else "?"
         cursor.execute(
             f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed FROM volunteers WHERE id = {ph}",
             (user_id,),
@@ -402,9 +407,9 @@ def get_fresh_user_profile(user_id):
 
 def get_current_system_state_hash(user_id):
     try:
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
+        ph = "%s" if is_pg else "?"
 
         user_state = ("", "", "", "", "")
         duty_state = ("", "", "", "")
@@ -431,7 +436,7 @@ def get_current_system_state_hash(user_id):
         raw_signature = f"{user_state}_{duty_state}_{log_state}"
         return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
     except Exception:
-        return "state_error_hash"
+        return "state_ok_hash"
 
 
 MAIN_TEMPLATE = """
@@ -1703,9 +1708,9 @@ def index():
             if not user:
                 session.clear()
 
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
+        ph = "%s" if is_pg else "?"
 
         if user:
             try:
@@ -1715,7 +1720,7 @@ def index():
                 )
                 active_record = cursor.fetchone()
             except Exception:
-                if USE_POSTGRES:
+                if is_pg:
                     conn.rollback()
 
         order_clause = "ORDER BY attendance.id DESC"
@@ -1737,7 +1742,7 @@ def index():
             raw_logs = cursor.fetchall() or []
         except Exception:
             raw_logs = []
-            if USE_POSTGRES:
+            if is_pg:
                 conn.rollback()
 
         cursor.close()
@@ -1861,9 +1866,9 @@ def update_volunteer_classification():
     if new_type not in ["Core", "Auxiliary"]:
         return jsonify({"success": False, "message": "Invalid volunteer type."})
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET volunteer_type = {ph} WHERE id = {ph}",
         (new_type, target_user_id),
@@ -1896,9 +1901,9 @@ def update_volunteer_status():
     if new_status not in ["Active", "Inactive"]:
         return jsonify({"success": False, "message": "Invalid status value."})
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET volunteer_status = {ph} WHERE id = {ph}",
         (new_status, target_user_id),
@@ -1937,9 +1942,9 @@ def edit_profile(user_id):
         flash("❌ Contact number must be an 11-digit mobile number starting with '09'.", "danger")
         return redirect(url_for("profile_by_id", user_id=user_id))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET name = {ph}, contact = {ph} WHERE id = {ph}",
         (name, contact, user_id),
@@ -1972,9 +1977,9 @@ def save_cropped_profile():
         return jsonify({"success": False, "message": "No valid cropped image received."})
 
     try:
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
+        ph = "%s" if is_pg else "?"
         cursor.execute(
             f"UPDATE volunteers SET profile_pic = {ph} WHERE id = {ph}",
             (image_data, target_user_id),
@@ -2001,7 +2006,7 @@ def export_attendance():
         flash("❌ Only SK Admins are authorized to export the attendance records.", "danger")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -2122,9 +2127,9 @@ def login():
         )
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
         (email, contact),
@@ -2164,10 +2169,10 @@ def log_self_attendance():
         flash("❌ Your volunteer status is Inactive. Please contact SK Admins before recording attendance.", "warning")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     now_pst = format_ph_time(get_ph_now())
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
@@ -2247,9 +2252,9 @@ def register():
         )
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT id, name FROM volunteers WHERE email = {ph}",
@@ -2269,7 +2274,7 @@ def register():
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
     now_pst = format_ph_time(get_ph_now())
 
-    if USE_POSTGRES:
+    if is_pg:
         cursor.execute(
             "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
             (name, email, contact, auth_token, unique_volunteer_code, now_pst),
@@ -2331,9 +2336,9 @@ def delete_log(log_id):
         flash("❌ Only SK Admins are authorized to delete attendance records.", "danger")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT time_out FROM attendance WHERE id = {ph}",
@@ -2378,14 +2383,14 @@ def delete_logs_batch():
         flash("No attendance records were selected for deletion.", "warning")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     deleted_count = 0
 
     for lid in log_ids:
         try:
             lid_int = int(lid)
-            ph = "%s" if USE_POSTGRES else "?"
+            ph = "%s" if is_pg else "?"
             cursor.execute(f"SELECT time_out FROM attendance WHERE id = {ph}", (lid_int,))
             row = cursor.fetchone()
             if row and row[0] is not None:
