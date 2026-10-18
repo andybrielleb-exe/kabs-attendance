@@ -29,9 +29,9 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v44")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v45")
 
-# Philippine Time Zone (UTC+8)
+# Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
 
 app.config.update(
@@ -116,7 +116,7 @@ def get_db_connection():
     global DATABASE_URL
     if DATABASE_URL and psycopg2:
         try:
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
             return conn, True
         except Exception:
             pass
@@ -165,7 +165,7 @@ def init_db():
                 ("last_accessed", "TEXT"),
             ]:
                 try:
-                    cursor.execute(f"ALTER TABLE volunteers ADD COLUMN {col} {col_type};")
+                    cursor.execute(f"ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS {col} {col_type};")
                     conn.commit()
                 except Exception:
                     conn.rollback()
@@ -176,7 +176,7 @@ def init_db():
                 ("total_hours", "TEXT"),
             ]:
                 try:
-                    cursor.execute(f"ALTER TABLE attendance ADD COLUMN {col} {col_type};")
+                    cursor.execute(f"ALTER TABLE attendance ADD COLUMN IF NOT EXISTS {col} {col_type};")
                     conn.commit()
                 except Exception:
                     conn.rollback()
@@ -235,8 +235,8 @@ def init_db():
         conn.commit()
         cursor.close()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print("DB Init Error:", e)
 
 
 with app.app_context():
@@ -503,7 +503,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW: TANGING LOGIN AT REGISTRATION LAMANG ANG MAKIKITA -->
+            <!-- LOGGED OUT VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -586,7 +586,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
         {% else %}
-            <!-- LOGGED IN VIEW: PUNCH CARD AT PASS -->
+            <!-- LOGGED IN VIEW -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if user.get('volunteer_status') != 'Active' %}
@@ -675,7 +675,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG TABLE (SA LOOB LAMANG NG LOGIN) -->
+            <!-- ATTENDANCE LOG TABLE (SA LOOB NG LOGIN) -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
                     <div>
@@ -795,7 +795,7 @@ MAIN_TEMPLATE = """
                 </form>
             </div>
 
-            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION (NASA PINAKAIBABA) -->
+            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <button type="button" onclick="toggleManualAccordion()" class="w-full p-4 sm:p-5 bg-slate-900 hover:bg-slate-800 text-white flex justify-between items-center transition-colors text-left outline-none cursor-pointer">
                     <div>
@@ -1523,7 +1523,7 @@ PROFILE_TEMPLATE = """
         }
 
         function updateVolunteerStatusFast(targetUserId, newStatus) {
-            pauseSyncTemporarily();
+            pauseSyncPaused();
             document.getElementById('status-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-status-text');
             const btn = document.getElementById('status-btn-main');
@@ -2300,11 +2300,6 @@ def logout():
 
 @app.errorhandler(404)
 def page_not_found(e):
-    return redirect(url_for("index"))
-
-
-@app.errorhandler(500)
-def server_error(e):
     return redirect(url_for("index"))
 
 
