@@ -24,18 +24,15 @@ from flask import (
 import qrcode
 
 try:
-    from zoneinfo import ZoneInfo
-    PH_TZ = ZoneInfo("Asia/Manila")
-except Exception:
-    PH_TZ = timezone(timedelta(hours=8))
-
-try:
     import psycopg2
 except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v32")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v42")
+
+# Standard Philippine Time Zone (UTC+8)
+PH_TZ = timezone(timedelta(hours=8))
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -46,8 +43,6 @@ app.config.update(
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-USE_POSTGRES = bool(DATABASE_URL and psycopg2)
 
 QR_FOLDER = os.path.join("static", "qrcodes")
 os.makedirs(QR_FOLDER, exist_ok=True)
@@ -100,8 +95,8 @@ def parse_duration_to_minutes(dur_str):
     if not dur_str:
         return -1
     total = 0
-    h_match = re.search(r"(\d+)\s*h", dur_str)
-    m_match = re.search(r"(\d+)\s*m", dur_str)
+    h_match = re.search(r"(\d+)\s*h", str(dur_str))
+    m_match = re.search(r"(\d+)\s*m", str(dur_str))
     if h_match:
         total += int(h_match.group(1)) * 60
     if m_match:
@@ -110,7 +105,7 @@ def parse_duration_to_minutes(dur_str):
 
 
 def is_admin_user(user_dict):
-    if not user_dict:
+    if not user_dict or not isinstance(user_dict, dict):
         return False
     email = str(user_dict.get("email", "")).strip().lower()
     code = str(user_dict.get("volunteer_code", "")).strip().upper()
@@ -118,125 +113,134 @@ def is_admin_user(user_dict):
 
 
 def get_db_connection():
-    if USE_POSTGRES:
-        return psycopg2.connect(DATABASE_URL)
-    return sqlite3.connect("kabs.db")
+    global DATABASE_URL
+    if DATABASE_URL and psycopg2:
+        try:
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            return conn, True
+        except Exception:
+            pass
+    return sqlite3.connect("kabs.db"), False
 
 
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    if USE_POSTGRES:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS volunteers (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(50) NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                contact TEXT NOT NULL,
-                auth_token TEXT NOT NULL,
-                volunteer_code TEXT UNIQUE,
-                qr_code TEXT,
-                profile_pic TEXT,
-                volunteer_status VARCHAR(20) DEFAULT 'Active',
-                volunteer_type VARCHAR(25) DEFAULT 'Auxiliary',
-                last_accessed TEXT
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS attendance (
-                id SERIAL PRIMARY KEY,
-                volunteer_id INTEGER REFERENCES volunteers(id),
-                agenda TEXT,
-                task TEXT,
-                time_in TEXT,
-                time_out TEXT,
-                total_hours TEXT
-            );
-            """
-        )
-        for col, col_type in [
-            ("profile_pic", "TEXT"),
-            ("volunteer_status", "VARCHAR(20) DEFAULT 'Active'"),
-            ("volunteer_type", "VARCHAR(25) DEFAULT 'Auxiliary'"),
-            ("last_accessed", "TEXT"),
-        ]:
-            try:
-                cursor.execute(f"ALTER TABLE volunteers ADD COLUMN {col} {col_type};")
-                conn.commit()
-            except Exception:
-                conn.rollback()
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS volunteers (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(50) NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    contact TEXT NOT NULL,
+                    auth_token TEXT NOT NULL,
+                    volunteer_code TEXT UNIQUE,
+                    qr_code TEXT,
+                    profile_pic TEXT,
+                    volunteer_status VARCHAR(20) DEFAULT 'Active',
+                    volunteer_type VARCHAR(25) DEFAULT 'Auxiliary',
+                    last_accessed TEXT
+                );
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attendance (
+                    id SERIAL PRIMARY KEY,
+                    volunteer_id INTEGER REFERENCES volunteers(id),
+                    agenda TEXT,
+                    task TEXT,
+                    time_in TEXT,
+                    time_out TEXT,
+                    total_hours TEXT
+                );
+                """
+            )
+            for col, col_type in [
+                ("profile_pic", "TEXT"),
+                ("volunteer_status", "VARCHAR(20) DEFAULT 'Active'"),
+                ("volunteer_type", "VARCHAR(25) DEFAULT 'Auxiliary'"),
+                ("last_accessed", "TEXT"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE volunteers ADD COLUMN {col} {col_type};")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
 
-        for col, col_type in [
-            ("agenda", "TEXT"),
-            ("task", "TEXT"),
-            ("total_hours", "TEXT"),
-        ]:
-            try:
-                cursor.execute(f"ALTER TABLE attendance ADD COLUMN {col} {col_type};")
-                conn.commit()
-            except Exception:
-                conn.rollback()
-    else:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS volunteers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(50) NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                contact TEXT NOT NULL,
-                auth_token TEXT NOT NULL,
-                volunteer_code TEXT UNIQUE,
-                qr_code TEXT,
-                profile_pic TEXT,
-                volunteer_status TEXT DEFAULT 'Active',
-                volunteer_type TEXT DEFAULT 'Auxiliary',
-                last_accessed TEXT
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS attendance (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                volunteer_id INTEGER,
-                agenda TEXT,
-                task TEXT,
-                time_in TEXT,
-                time_out TEXT,
-                total_hours TEXT,
-                FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
-            );
-            """
-        )
-        cursor.execute("PRAGMA table_info(volunteers)")
-        v_cols = [c[1] for c in cursor.fetchall()]
-        if "profile_pic" not in v_cols:
-            cursor.execute("ALTER TABLE volunteers ADD COLUMN profile_pic TEXT;")
-        if "volunteer_status" not in v_cols:
-            cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_status TEXT DEFAULT 'Active';")
-        if "volunteer_type" not in v_cols:
-            cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_type TEXT DEFAULT 'Auxiliary';")
-        if "last_accessed" not in v_cols:
-            cursor.execute("ALTER TABLE volunteers ADD COLUMN last_accessed TEXT;")
+            for col, col_type in [
+                ("agenda", "TEXT"),
+                ("task", "TEXT"),
+                ("total_hours", "TEXT"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE attendance ADD COLUMN {col} {col_type};")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS volunteers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(50) NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    contact TEXT NOT NULL,
+                    auth_token TEXT NOT NULL,
+                    volunteer_code TEXT UNIQUE,
+                    qr_code TEXT,
+                    profile_pic TEXT,
+                    volunteer_status TEXT DEFAULT 'Active',
+                    volunteer_type TEXT DEFAULT 'Auxiliary',
+                    last_accessed TEXT
+                );
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attendance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    volunteer_id INTEGER,
+                    agenda TEXT,
+                    task TEXT,
+                    time_in TEXT,
+                    time_out TEXT,
+                    total_hours TEXT,
+                    FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
+                );
+                """
+            )
+            cursor.execute("PRAGMA table_info(volunteers)")
+            v_cols = [c[1] for c in cursor.fetchall()]
+            if "profile_pic" not in v_cols:
+                cursor.execute("ALTER TABLE volunteers ADD COLUMN profile_pic TEXT;")
+            if "volunteer_status" not in v_cols:
+                cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_status TEXT DEFAULT 'Active';")
+            if "volunteer_type" not in v_cols:
+                cursor.execute("ALTER TABLE volunteers ADD COLUMN volunteer_type TEXT DEFAULT 'Auxiliary';")
+            if "last_accessed" not in v_cols:
+                cursor.execute("ALTER TABLE volunteers ADD COLUMN last_accessed TEXT;")
 
-        cursor.execute("PRAGMA table_info(attendance)")
-        a_cols = [c[1] for c in cursor.fetchall()]
-        if "agenda" not in a_cols:
-            cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
-        if "task" not in a_cols:
-            cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
-        if "total_hours" not in a_cols:
-            cursor.execute("ALTER TABLE attendance ADD COLUMN total_hours TEXT;")
+            cursor.execute("PRAGMA table_info(attendance)")
+            a_cols = [c[1] for c in cursor.fetchall()]
+            if "agenda" not in a_cols:
+                cursor.execute("ALTER TABLE attendance ADD COLUMN agenda TEXT;")
+            if "task" not in a_cols:
+                cursor.execute("ALTER TABLE attendance ADD COLUMN task TEXT;")
+            if "total_hours" not in a_cols:
+                cursor.execute("ALTER TABLE attendance ADD COLUMN total_hours TEXT;")
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception:
+        pass
 
 
-init_db()
+with app.app_context():
+    init_db()
 
 
 def authenticate_user_by_qr(raw_qr_input):
@@ -273,9 +277,9 @@ def authenticate_user_by_qr(raw_qr_input):
         if url_match:
             v_token = url_match.group(1).strip()
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     user = None
 
     def try_execute(query, params):
@@ -283,7 +287,7 @@ def authenticate_user_by_qr(raw_qr_input):
             cursor.execute(query, params)
             return cursor.fetchone()
         except Exception:
-            if USE_POSTGRES:
+            if is_pg:
                 try:
                     conn.rollback()
                 except Exception:
@@ -332,97 +336,105 @@ def authenticate_user_by_qr(raw_qr_input):
 
 
 def get_fresh_user_profile(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-    cursor.execute(
-        f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed FROM volunteers WHERE id = {ph}",
-        (user_id,),
-    )
-    row = cursor.fetchone()
+    if not user_id:
+        return None
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed FROM volunteers WHERE id = {ph}",
+            (user_id,),
+        )
+        row = cursor.fetchone()
 
-    if not row:
+        if not row:
+            cursor.close()
+            conn.close()
+            return None
+
+        status = row[7] if (len(row) > 7 and row[7]) else "Active"
+        v_type = row[8] if (len(row) > 8 and row[8]) else "Auxiliary"
+        last_accessed_str = row[9] if (len(row) > 9 and row[9]) else None
+        
+        now_dt = get_ph_now()
+        now_str = format_ph_time(now_dt)
+
+        is_over_six_months = False
+        if last_accessed_str:
+            try:
+                last_dt = datetime.strptime(last_accessed_str.strip(), "%Y-%m-%d %I:%M:%S %p")
+                last_dt = last_dt.replace(tzinfo=PH_TZ)
+                if (now_dt - last_dt).days >= 180:
+                    is_over_six_months = True
+            except Exception:
+                pass
+
+        if is_over_six_months and status != "Inactive":
+            status = "Inactive"
+            cursor.execute(
+                f"UPDATE volunteers SET volunteer_status = 'Inactive', last_accessed = {ph} WHERE id = {ph}",
+                (now_str, user_id),
+            )
+            conn.commit()
+        else:
+            cursor.execute(
+                f"UPDATE volunteers SET last_accessed = {ph} WHERE id = {ph}",
+                (now_str, user_id),
+            )
+            conn.commit()
+
         cursor.close()
         conn.close()
+
+        return {
+            "id": row[0],
+            "name": row[1],
+            "email": row[2],
+            "contact": row[3],
+            "qr_code": row[4],
+            "volunteer_code": row[5],
+            "profile_pic": row[6],
+            "volunteer_status": status,
+            "volunteer_type": v_type,
+            "last_accessed": row[9] if len(row) > 9 else None,
+        }
+    except Exception:
         return None
-
-    status = row[7] if (len(row) > 7 and row[7]) else "Active"
-    v_type = row[8] if (len(row) > 8 and row[8]) else "Auxiliary"
-    last_accessed_str = row[9] if (len(row) > 9 and row[9]) else None
-    
-    now_dt = get_ph_now()
-    now_str = format_ph_time(now_dt)
-
-    is_over_six_months = False
-    if last_accessed_str:
-        try:
-            last_dt = datetime.strptime(last_accessed_str.strip(), "%Y-%m-%d %I:%M:%S %p")
-            last_dt = last_dt.replace(tzinfo=PH_TZ)
-            if (now_dt - last_dt).days >= 180:
-                is_over_six_months = True
-        except Exception:
-            pass
-
-    if is_over_six_months and status != "Inactive":
-        status = "Inactive"
-        cursor.execute(
-            f"UPDATE volunteers SET volunteer_status = 'Inactive', last_accessed = {ph} WHERE id = {ph}",
-            (now_str, user_id),
-        )
-        conn.commit()
-    else:
-        cursor.execute(
-            f"UPDATE volunteers SET last_accessed = {ph} WHERE id = {ph}",
-            (now_str, user_id),
-        )
-        conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {
-        "id": row[0],
-        "name": row[1],
-        "email": row[2],
-        "contact": row[3],
-        "qr_code": row[4],
-        "volunteer_code": row[5],
-        "profile_pic": row[6],
-        "volunteer_status": status,
-        "volunteer_type": v_type,
-        "last_accessed": row[9] if len(row) > 9 else None,
-    }
 
 
 def get_current_system_state_hash(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    try:
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
 
-    user_state = ("", "", "", "", "")
-    duty_state = ("", "", "", "")
+        user_state = ("", "", "", "", "")
+        duty_state = ("", "", "", "")
 
-    if user_id:
-        cursor.execute(
-            f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
-            (user_id,),
-        )
-        user_state = cursor.fetchone() or ("", "", "", "", "")
+        if user_id:
+            cursor.execute(
+                f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
+                (user_id,),
+            )
+            user_state = cursor.fetchone() or ("", "", "", "", "")
 
-        cursor.execute(
-            f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
-            (user_id,),
-        )
-        duty_state = cursor.fetchone() or ("", "", "", "")
+            cursor.execute(
+                f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
+                (user_id,),
+            )
+            duty_state = cursor.fetchone() or ("", "", "", "")
 
-    cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
-    log_state = cursor.fetchone() or (0, 0, "")
+        cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
+        log_state = cursor.fetchone() or (0, 0, "")
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.close()
 
-    raw_signature = f"{user_state}_{duty_state}_{log_state}"
-    return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
+        raw_signature = f"{user_state}_{duty_state}_{log_state}"
+        return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
+    except Exception:
+        return "state_ok_hash"
 
 
 MAIN_TEMPLATE = """
@@ -578,7 +590,6 @@ MAIN_TEMPLATE = """
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     {% if user.get('volunteer_status') != 'Active' %}
-                        <!-- LOCKED STATUS -->
                         <div class="text-center py-6 space-y-3">
                             <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
                                 🔒
@@ -663,211 +674,161 @@ MAIN_TEMPLATE = """
                     </div>
                 </div>
             </div>
-
-            <!-- ATTENDANCE LOG TABLE -->
-            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
-                    <div>
-                        <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
-                        <p class="text-xs text-slate-500">Official logs of volunteer hours, duties, and attendance (PST Time).</p>
-                    </div>
-                    
-                    <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
-                        <!-- SORT DROPDOWN -->
-                        <form method="GET" action="/" class="flex items-center gap-1.5 text-xs">
-                            <label for="sort_by" class="font-semibold text-slate-600">Sort by:</label>
-                            <select name="sort_by" id="sort_by" onchange="this.form.submit()" class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 outline-none focus:ring-1 focus:ring-blue-600">
-                                <option value="latest" {% if current_sort == 'latest' %}selected{% endif %}>Latest Duty</option>
-                                <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name (A-Z)</option>
-                                <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name (Z-A)</option>
-                                <option value="hours_desc" {% if current_sort == 'hours_desc' %}selected{% endif %}>Highest Hours</option>
-                            </select>
-                        </form>
-
-                        {% if is_admin %}
-                            <button type="button" id="batch-delete-btn" onclick="submitBatchDelete()" class="hidden items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all">
-                                🗑️ Delete Selected (<span id="selected-count">0</span>)
-                            </button>
-
-                            {% if logs and logs|length > 0 %}
-                                <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-all">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    Export Excel
-                                </a>
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                </div>
-
-                <form id="batch-delete-form" action="/delete-logs-batch" method="POST">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs sm:text-sm">
-                            <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                                <tr>
-                                    {% if is_admin %}
-                                    <th class="py-3 px-3 text-center w-8">
-                                        <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)" class="w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
-                                    </th>
-                                    {% endif %}
-                                    <th class="py-3 px-4">Volunteer</th>
-                                    <th class="py-3 px-4">Agenda</th>
-                                    <th class="py-3 px-4">Task</th>
-                                    <th class="py-3 px-4">Time In</th>
-                                    <th class="py-3 px-4">Time Out</th>
-                                    <th class="py-3 px-4 text-center">Total Hours</th>
-                                    {% if is_admin %}
-                                    <th class="py-3 px-4 text-center">Action</th>
-                                    {% endif %}
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100">
-                                {% for log in logs %}
-                                <tr>
-                                    {% if is_admin %}
-                                    <td class="py-3 px-3 text-center">
-                                        {% if log[4] %}
-                                        <input type="checkbox" name="log_ids" value="{{ log[5] }}" onchange="updateSelectedCount()" class="row-checkbox w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
-                                        {% else %}
-                                        <span class="text-slate-300 text-[10px]" title="Cannot delete active duty session">🔒</span>
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
-                                    <td class="py-3 px-4 font-bold">
-                                        {% if is_admin %}
-                                            <a href="/profile/{{ log[7] }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
-                                                <span>👤</span> {{ log[0] }}
-                                            </a>
-                                        {% else %}
-                                            <span class="text-slate-800 flex items-center gap-1">
-                                                <span>👤</span> {{ log[0] }}
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
-                                    <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
-                                    <td class="py-3 px-4 text-emerald-600 font-semibold whitespace-nowrap">{{ log[3] }}</td>
-                                    <td class="py-3 px-4 font-medium whitespace-nowrap {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
-                                        {{ log[4] if log[4] else 'Clocked In' }}
-                                    </td>
-                                    <td class="py-3 px-4 text-center">
-                                        {% if log[6] %}
-                                            <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs whitespace-nowrap">
-                                                ⏱️ {{ log[6] }}
-                                            </span>
-                                        {% elif log[4] %}
-                                            <span class="text-slate-400 text-xs">N/A</span>
-                                        {% else %}
-                                            <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
-                                                In Progress
-                                            </span>
-                                        {% endif %}
-                                    </td>
-                                    {% if is_admin %}
-                                    <td class="py-3 px-4 text-center">
-                                        {% if log[4] %}
-                                            <button type="button" onclick="deleteSingleLog({{ log[5] }})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
-                                                Delete
-                                            </button>
-                                        {% else %}
-                                            <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
-                                                Clocked In
-                                            </button>
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="{% if is_admin %}8{% else %}6{% endif %}" class="text-center py-6 text-slate-400">No attendance records found.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </form>
-            </div>
-
-            <!-- KABS VOLUNTEER MANUAL SECTION -->
-            <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div class="p-5 bg-slate-900 text-white flex justify-between items-center">
-                    <div>
-                        <h3 class="text-base font-extrabold tracking-wide">📖 KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                        <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
-                    </div>
-                </div>
-
-                <div class="p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                        <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
-                        <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions.</p>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                        <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025.</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li>Promote active youth participation in community development and local governance.</li>
-                            <li>Develop leadership, teamwork, and civic responsibility among young volunteers.</li>
-                            <li>Provide structured deployment, recognition, and skill-building opportunities.</li>
-                        </ul>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                                <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                                <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change.</p>
-                            </div>
-                            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                                <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                                <p class="text-xs">Embodies communal unity and shared responsibility.</p>
-                            </div>
-                            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                                <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                                <p class="text-xs">Selflessness, dedication, and accountability to uplift lives.</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="space-y-2 border-b pb-4">
-                        <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                        <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics).</p>
-                    </section>
-
-                    <section class="space-y-2 pb-2">
-                        <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                        <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition.</p>
-                    </section>
-                </div>
-            </div>
         {% endif %}
-    </main>
 
-    <!-- KABS MANUAL MODAL -->
-    <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
-        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
-            <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
+        <!-- ATTENDANCE LOG TABLE (LITAW SA LAHAT NG DEVICES) -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
                 <div>
-                    <h3 class="text-base sm:text-lg font-extrabold tracking-wide">KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
-                    <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City</p>
+                    <h3 class="font-bold text-sm text-slate-800">Attendance Log</h3>
+                    <p class="text-xs text-slate-500">Official logs of volunteer hours, duties, and attendance (PST Time).</p>
                 </div>
-                <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-white text-2xl font-bold p-1 leading-none">&times;</button>
+                
+                <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+                    <form method="GET" action="/" class="flex items-center gap-1.5 text-xs">
+                        <label for="sort_by" class="font-semibold text-slate-600">Sort by:</label>
+                        <select name="sort_by" id="sort_by" onchange="this.form.submit()" class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 outline-none focus:ring-1 focus:ring-blue-600">
+                            <option value="latest" {% if current_sort|default('latest') == 'latest' %}selected{% endif %}>Latest Duty</option>
+                            <option value="name_asc" {% if current_sort|default('latest') == 'name_asc' %}selected{% endif %}>Name (A-Z)</option>
+                            <option value="name_desc" {% if current_sort|default('latest') == 'name_desc' %}selected{% endif %}>Name (Z-A)</option>
+                            <option value="hours_desc" {% if current_sort|default('latest') == 'hours_desc' %}selected{% endif %}>Highest Hours</option>
+                        </select>
+                    </form>
+
+                    {% if is_admin %}
+                        <button type="button" id="batch-delete-btn" onclick="submitBatchDelete()" class="hidden items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all">
+                            🗑️ Delete Selected (<span id="selected-count">0</span>)
+                        </button>
+
+                        {% if logs and logs|length > 0 %}
+                            <a href="/export-attendance" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Export Excel
+                            </a>
+                        {% endif %}
+                    {% endif %}
+                </div>
             </div>
-            
-            <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+
+            <form id="batch-delete-form" action="/delete-logs-batch" method="POST">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                {% if is_admin %}
+                                <th class="py-3 px-3 text-center w-8">
+                                    <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)" class="w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
+                                </th>
+                                {% endif %}
+                                <th class="py-3 px-4">Volunteer</th>
+                                <th class="py-3 px-4">Agenda</th>
+                                <th class="py-3 px-4">Task</th>
+                                <th class="py-3 px-4">Time In</th>
+                                <th class="py-3 px-4">Time Out</th>
+                                <th class="py-3 px-4 text-center">Total Hours</th>
+                                {% if is_admin %}
+                                <th class="py-3 px-4 text-center">Action</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for log in logs %}
+                            <tr>
+                                {% if is_admin %}
+                                <td class="py-3 px-3 text-center">
+                                    {% if log[4] %}
+                                    <input type="checkbox" name="log_ids" value="{{ log[5] }}" onchange="updateSelectedCount()" class="row-checkbox w-4 h-4 text-rose-600 rounded border-slate-300 cursor-pointer">
+                                    {% else %}
+                                    <span class="text-slate-300 text-[10px]" title="Cannot delete active duty session">🔒</span>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
+                                <td class="py-3 px-4 font-bold">
+                                    {% if is_admin %}
+                                        <a href="/profile/{{ log[7]|default(0) }}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
+                                            <span>👤</span> {{ log[0] }}
+                                        </a>
+                                    {% else %}
+                                        <span class="text-slate-800 flex items-center gap-1">
+                                            <span>👤</span> {{ log[0] }}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-blue-700 font-medium">{{ log[1] if log[1] else '-' }}</td>
+                                <td class="py-3 px-4 text-slate-600">{{ log[2] if log[2] else '-' }}</td>
+                                <td class="py-3 px-4 text-emerald-600 font-semibold whitespace-nowrap">{{ log[3] }}</td>
+                                <td class="py-3 px-4 font-medium whitespace-nowrap {% if log[4] %}text-rose-600{% else %}text-amber-500 italic{% endif %}">
+                                    {{ log[4] if log[4] else 'Clocked In' }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[6] %}
+                                        <span class="inline-block bg-blue-50 text-blue-800 border border-blue-200 font-bold px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                                            ⏱️ {{ log[6] }}
+                                        </span>
+                                    {% elif log[4] %}
+                                        <span class="text-slate-400 text-xs">N/A</span>
+                                    {% else %}
+                                        <span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded text-xs animate-pulse">
+                                            In Progress
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                {% if is_admin %}
+                                <td class="py-3 px-4 text-center">
+                                    {% if log[4] %}
+                                        <button type="button" onclick="deleteSingleLog({{ log[5] }})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-2.5 py-1 rounded-lg transition-all">
+                                            Delete
+                                        </button>
+                                    {% else %}
+                                        <button type="button" disabled class="opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 text-xs font-medium px-2 py-1 rounded-lg">
+                                            Clocked In
+                                        </button>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="{% if is_admin %}8{% else %}6{% endif %}" class="text-center py-6 text-slate-400">No attendance records found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+
+        <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION (NASA IBABA) -->
+        <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <button type="button" onclick="toggleManualAccordion()" class="w-full p-4 sm:p-5 bg-slate-900 hover:bg-slate-800 text-white flex justify-between items-center transition-colors text-left outline-none cursor-pointer">
+                <div>
+                    <h3 class="text-sm sm:text-base font-extrabold tracking-wide flex items-center gap-2">
+                        <span>📖</span> KABS YOUTH VOLUNTEERS PROGRAM MANUAL
+                    </h3>
+                    <p class="text-[11px] text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City[cite: 5]</p>
+                </div>
+                <div class="flex items-center gap-2 pl-3 flex-shrink-0">
+                    <span id="accordion-status-label" class="text-[11px] text-blue-300 font-semibold hidden sm:inline">Click to open</span>
+                    <div id="accordion-arrow" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 transition-transform duration-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </div>
+                </div>
+            </button>
+
+            <div id="accordion-content" class="hidden border-t border-slate-200 p-6 max-h-[500px] overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify transition-all duration-300">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
-                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions.</p>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5]. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates[cite: 5]. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives[cite: 5].</p>
+                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions[cite: 5].</p>
                 </section>
 
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025.</p>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5]. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025[cite: 5].</p>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li>Promote active youth participation in community development and local governance.</li>
-                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers.</li>
-                        <li>Provide structured deployment, recognition, and skill-building opportunities.</li>
+                        <li>Promote active youth participation in community development and local governance[cite: 5].</li>
+                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers[cite: 5].</li>
+                        <li>Provide structured deployment, recognition, and skill-building opportunities[cite: 5].</li>
                     </ul>
                 </section>
 
@@ -876,37 +837,65 @@ MAIN_TEMPLATE = """
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
                             <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change.</p>
+                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change[cite: 5].</p>
                         </div>
                         <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
                             <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                            <p class="text-xs">Embodies communal unity and shared responsibility.</p>
+                            <p class="text-xs">Embodies communal unity and shared responsibility[cite: 5].</p>
                         </div>
                         <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
                             <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives.</p>
+                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives[cite: 5].</p>
                         </div>
                     </div>
                 </section>
 
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                    <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics).</p>
+                    <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics)[cite: 5].</p>
                 </section>
 
                 <section class="space-y-2 pb-2">
                     <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                    <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition.</p>
-                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                        <p class="text-xs font-bold text-emerald-900">You have reached the end of the KABS Volunteer Manual.</p>
-                        <p class="text-[11px] text-emerald-700">You may now confirm your agreement below to unlock registration.</p>
-                    </div>
+                    <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect[cite: 5]. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited[cite: 5]. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition[cite: 5].</p>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- KABS MANUAL MODAL -->
+    <div id="manual-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            <div class="p-4 sm:p-5 border-b border-slate-200 flex justify-between items-center bg-slate-900 text-white rounded-t-2xl">
+                <div>
+                    <h3 class="text-base sm:text-lg font-extrabold tracking-wide">KABS YOUTH VOLUNTEERS PROGRAM MANUAL</h3>
+                    <p class="text-xs text-slate-300">Sangguniang Kabataan of Barangay Payatas, Quezon City[cite: 5]</p>
+                </div>
+                <button type="button" onclick="closeManualModal()" class="text-slate-400 hover:text-white text-2xl font-bold p-1 leading-none">&times;</button>
+            </div>
+            
+            <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
+                    <p>Young people are recognized as vital partners in nation-building[cite: 5]. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities[cite: 5].</p>
+                </section>
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas[cite: 5].</p>
+                </section>
+                <section class="space-y-2 border-b pb-4">
+                    <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
+                    <p>Action, Bayanihan, and Service[cite: 5].</p>
+                </section>
+                <section class="space-y-2 pb-2">
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty[cite: 5].</p>
                 </section>
             </div>
 
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
-                    ⬇️ Scroll down to the bottom to unlock...
+                    ⬇ Scroll down to the bottom to unlock...
                 </span>
                 <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
                     I Agree (Unlock Registration)
@@ -929,6 +918,24 @@ MAIN_TEMPLATE = """
         function handleLogoutClick() {
             clearLoginStorage();
             window.location.href = '/logout';
+        }
+
+        function toggleManualAccordion() {
+            const content = document.getElementById('accordion-content');
+            const arrow = document.getElementById('accordion-arrow');
+            const label = document.getElementById('accordion-status-label');
+
+            if (!content || !arrow) return;
+
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                arrow.classList.add('rotate-180');
+                if (label) label.innerText = "Click to close";
+            } else {
+                content.classList.add('hidden');
+                arrow.classList.remove('rotate-180');
+                if (label) label.innerText = "Click to open";
+            }
         }
 
         function toggleSelectAll(masterCheckbox) {
@@ -1422,23 +1429,6 @@ PROFILE_TEMPLATE = """
                 </div>
                 {% endif %}
             </form>
-
-            <!-- DANGER ZONE: ADMIN-ONLY DELETE ACCOUNT -->
-            {% if is_admin %}
-            <div class="pt-6 border-t border-rose-200">
-                <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                        <h4 class="text-xs font-bold text-rose-900">Danger Zone: Admin Management</h4>
-                        <p class="text-[11px] text-rose-700">Permanently delete this volunteer account along with associated attendance records.</p>
-                    </div>
-                    <form action="/delete-volunteer-account/{{ profile_user.get('id') }}" method="POST" onsubmit="return confirm('ARE YOU SURE? This will permanently delete {{ profile_user.get('name') }} and cannot be undone.');">
-                        <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition-all whitespace-nowrap">
-                            🗑️ Delete Account
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </main>
 
@@ -1703,63 +1693,78 @@ PROFILE_TEMPLATE = """
 """
 
 
+# HOMEPAGE ROOT ROUTE
 @app.route("/")
 def index():
-    session_user = session.get("user")
-    user = None
-    active_record = None
-    sort_by = request.args.get("sort_by", "latest")
+    try:
+        session_user = session.get("user")
+        user = None
+        active_record = None
+        sort_by = request.args.get("sort_by", "latest")
 
-    if session_user:
-        user = get_fresh_user_profile(session_user["id"])
-        if not user:
-            session.clear()
+        if session_user and isinstance(session_user, dict):
+            user = get_fresh_user_profile(session_user.get("id"))
+            if not user:
+                session.clear()
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
 
-    if user:
-        cursor.execute(
-            f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-            (user["id"],),
+        if user:
+            try:
+                cursor.execute(
+                    f"SELECT id, agenda, task, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+                    (user["id"],),
+                )
+                active_record = cursor.fetchone()
+            except Exception:
+                if is_pg:
+                    conn.rollback()
+
+        order_clause = "ORDER BY attendance.id DESC"
+        if sort_by == "name_asc":
+            order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
+        elif sort_by == "name_desc":
+            order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
+
+        try:
+            cursor.execute(
+                f"""
+                SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
+                FROM attendance
+                LEFT JOIN volunteers ON attendance.volunteer_id = volunteers.id
+                {order_clause}
+                LIMIT 100
+                """
+            )
+            raw_logs = cursor.fetchall() or []
+        except Exception:
+            raw_logs = []
+            if is_pg:
+                conn.rollback()
+
+        cursor.close()
+        conn.close()
+
+        if sort_by == "hours_desc":
+            logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6] if len(x) > 6 else 0), reverse=True)
+        else:
+            logs = raw_logs
+
+        is_admin = is_admin_user(user)
+
+        return render_template_string(
+            MAIN_TEMPLATE,
+            user=user,
+            logs=logs,
+            active_record=active_record,
+            is_admin=is_admin,
+            current_sort=sort_by,
         )
-        active_record = cursor.fetchone()
-
-    order_clause = "ORDER BY attendance.id DESC"
-    if sort_by == "name_asc":
-        order_clause = "ORDER BY volunteers.name ASC, attendance.id DESC"
-    elif sort_by == "name_desc":
-        order_clause = "ORDER BY volunteers.name DESC, attendance.id DESC"
-
-    cursor.execute(
-        f"""
-        SELECT volunteers.name, attendance.agenda, attendance.task, attendance.time_in, attendance.time_out, attendance.id, attendance.total_hours, attendance.volunteer_id
-        FROM attendance
-        JOIN volunteers ON attendance.volunteer_id = volunteers.id
-        {order_clause}
-        LIMIT 100
-        """
-    )
-    raw_logs = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    if sort_by == "hours_desc":
-        logs = sorted(raw_logs, key=lambda x: parse_duration_to_minutes(x[6]), reverse=True)
-    else:
-        logs = raw_logs
-
-    is_admin = is_admin_user(user)
-
-    if os.path.exists(os.path.join("templates", "index.html")):
-        return render_template(
-            "index.html", user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
-        )
-
-    return render_template_string(
-        MAIN_TEMPLATE, user=user, logs=logs, active_record=active_record, is_admin=is_admin, current_sort=sort_by
-    )
+    except Exception as e:
+        session.clear()
+        return f"<h3>Loading portal... Please refresh the page.</h3><p>{str(e)}</p>", 200
 
 
 @app.route("/qr-code/<volunteer_code>")
@@ -1775,11 +1780,11 @@ def generate_qr_code(volunteer_code):
 @app.route("/sync-state")
 def sync_state():
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         state_hash = get_current_system_state_hash(None)
         return jsonify({"logged_in": False, "state_hash": state_hash})
 
-    state_hash = get_current_system_state_hash(session_user["id"])
+    state_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"logged_in": True, "state_hash": state_hash})
 
 
@@ -1804,11 +1809,11 @@ def qr_direct_auth(token):
 @app.route("/profile")
 def profile_self():
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         flash("Please log in first to view your profile.", "danger")
         return redirect(url_for("index"))
 
-    user = get_fresh_user_profile(session_user["id"])
+    user = get_fresh_user_profile(session_user.get("id"))
     if not user:
         session.clear()
         return redirect(url_for("index"))
@@ -1822,12 +1827,12 @@ def profile_self():
 @app.route("/profile/<int:user_id>")
 def profile_by_id(user_id):
     session_user = session.get("user")
-    if not session_user:
+    if not session_user or not isinstance(session_user, dict):
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
-    if not is_admin_user(current_user) and session_user["id"] != user_id:
+    current_user = get_fresh_user_profile(session_user.get("id"))
+    if not is_admin_user(current_user) and session_user.get("id") != user_id:
         flash("🔒 Unauthorized to view other volunteer profiles.", "warning")
         return redirect(url_for("index"))
 
@@ -1837,7 +1842,7 @@ def profile_by_id(user_id):
         return redirect(url_for("index"))
 
     is_admin = is_admin_user(current_user)
-    is_owner = (session_user["id"] == user_id)
+    is_owner = (session_user.get("id") == user_id)
 
     return render_template_string(
         PROFILE_TEMPLATE, profile_user=target_user, session_user=current_user, is_admin=is_admin, is_owner=is_owner
@@ -1850,7 +1855,7 @@ def update_volunteer_classification():
     if not session_user:
         return jsonify({"success": False, "message": "Authentication required."})
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         return jsonify({"success": False, "message": "Unauthorized action."})
 
@@ -1860,9 +1865,9 @@ def update_volunteer_classification():
     if new_type not in ["Core", "Auxiliary"]:
         return jsonify({"success": False, "message": "Invalid volunteer type."})
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET volunteer_type = {ph} WHERE id = {ph}",
         (new_type, target_user_id),
@@ -1871,11 +1876,11 @@ def update_volunteer_classification():
     cursor.close()
     conn.close()
 
-    if session_user["id"] == target_user_id:
+    if session_user.get("id") == target_user_id:
         session["user"]["volunteer_type"] = new_type
         session.modified = True
 
-    new_hash = get_current_system_state_hash(session_user["id"])
+    new_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"success": True, "state_hash": new_hash})
 
 
@@ -1885,19 +1890,19 @@ def update_volunteer_status():
     if not session_user:
         return jsonify({"success": False, "message": "Authentication required."})
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         return jsonify({"success": False, "message": "Unauthorized action."})
 
     data = request.json or {}
-    target_user_id = data.get("user_id") or session_user["id"]
+    target_user_id = data.get("user_id") or session_user.get("id")
     new_status = data.get("status")
     if new_status not in ["Active", "Inactive"]:
         return jsonify({"success": False, "message": "Invalid status value."})
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET volunteer_status = {ph} WHERE id = {ph}",
         (new_status, target_user_id),
@@ -1906,50 +1911,12 @@ def update_volunteer_status():
     cursor.close()
     conn.close()
 
-    if session_user["id"] == target_user_id:
+    if session_user.get("id") == target_user_id:
         session["user"]["volunteer_status"] = new_status
         session.modified = True
 
-    new_hash = get_current_system_state_hash(session_user["id"])
+    new_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"success": True, "state_hash": new_hash})
-
-
-@app.route("/delete-volunteer-account/<int:user_id>", methods=["POST"])
-def delete_volunteer_account(user_id):
-    session_user = session.get("user")
-    if not session_user:
-        flash("Please log in first.", "danger")
-        return redirect(url_for("index"))
-
-    current_user = get_fresh_user_profile(session_user["id"])
-    if not is_admin_user(current_user):
-        flash("❌ Only SK Admins are authorized to delete volunteer accounts.", "danger")
-        return redirect(url_for("index"))
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-
-    cursor.execute(f"SELECT name FROM volunteers WHERE id = {ph}", (user_id,))
-    target = cursor.fetchone()
-
-    if target:
-        v_name = target[0]
-        cursor.execute(f"DELETE FROM attendance WHERE volunteer_id = {ph}", (user_id,))
-        cursor.execute(f"DELETE FROM volunteers WHERE id = {ph}", (user_id,))
-        conn.commit()
-        flash(f"🗑️ Successfully deleted volunteer account for {v_name}.", "success")
-    else:
-        flash("Volunteer account not found.", "danger")
-
-    cursor.close()
-    conn.close()
-
-    if session_user["id"] == user_id:
-        session.clear()
-        return redirect(url_for("index"))
-
-    return redirect(url_for("index"))
 
 
 @app.route("/edit-profile/<int:user_id>", methods=["POST"])
@@ -1959,7 +1926,7 @@ def edit_profile(user_id):
         flash("Please log in to edit profile information.", "danger")
         return redirect(url_for("index"))
 
-    if session_user["id"] != user_id:
+    if session_user.get("id") != user_id:
         flash("❌ You are only permitted to edit your own account information.", "danger")
         return redirect(url_for("profile_by_id", user_id=user_id))
 
@@ -1974,9 +1941,9 @@ def edit_profile(user_id):
         flash("❌ Contact number must be an 11-digit mobile number starting with '09'.", "danger")
         return redirect(url_for("profile_by_id", user_id=user_id))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"UPDATE volunteers SET name = {ph}, contact = {ph} WHERE id = {ph}",
         (name, contact, user_id),
@@ -1999,9 +1966,9 @@ def save_cropped_profile():
         return jsonify({"success": False, "message": "Authentication required."})
 
     data = request.json or {}
-    target_user_id = data.get("user_id") or session_user["id"]
+    target_user_id = data.get("user_id") or session_user.get("id")
 
-    if session_user["id"] != target_user_id:
+    if session_user.get("id") != target_user_id:
         return jsonify({"success": False, "message": "❌ Only the account owner may change this profile picture."})
 
     image_data = data.get("image_data")
@@ -2009,9 +1976,9 @@ def save_cropped_profile():
         return jsonify({"success": False, "message": "No valid cropped image received."})
 
     try:
-        conn = get_db_connection()
+        conn, is_pg = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
+        ph = "%s" if is_pg else "?"
         cursor.execute(
             f"UPDATE volunteers SET profile_pic = {ph} WHERE id = {ph}",
             (image_data, target_user_id),
@@ -2033,12 +2000,12 @@ def export_attendance():
         flash("Please log in to export attendance logs.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to export the attendance records.", "danger")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -2159,9 +2126,9 @@ def login():
         )
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
     cursor.execute(
         f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
         (email, contact),
@@ -2196,19 +2163,19 @@ def log_self_attendance():
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    profile = get_fresh_user_profile(session_user["id"])
+    profile = get_fresh_user_profile(session_user.get("id"))
     if not profile or profile.get("volunteer_status") != "Active":
         flash("❌ Your volunteer status is Inactive. Please contact SK Admins before recording attendance.", "warning")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     now_pst = format_ph_time(get_ph_now())
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (session_user["id"],),
+        (session_user.get("id"),),
     )
     active_record = cursor.fetchone()
 
@@ -2234,7 +2201,7 @@ def log_self_attendance():
 
         cursor.execute(
             f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
-            (session_user["id"], agenda_val, task_val, now_pst),
+            (session_user.get("id"), agenda_val, task_val, now_pst),
         )
         conn.commit()
         flash(
@@ -2284,9 +2251,9 @@ def register():
         )
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT id, name FROM volunteers WHERE email = {ph}",
@@ -2306,7 +2273,7 @@ def register():
     unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
     now_pst = format_ph_time(get_ph_now())
 
-    if USE_POSTGRES:
+    if is_pg:
         cursor.execute(
             "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
             (name, email, contact, auth_token, unique_volunteer_code, now_pst),
@@ -2358,14 +2325,14 @@ def delete_log(log_id):
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to delete attendance records.", "danger")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    ph = "%s" if is_pg else "?"
 
     cursor.execute(
         f"SELECT time_out FROM attendance WHERE id = {ph}",
@@ -2400,7 +2367,7 @@ def delete_logs_batch():
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to delete attendance records.", "danger")
         return redirect(url_for("index"))
@@ -2410,14 +2377,14 @@ def delete_logs_batch():
         flash("No attendance records were selected for deletion.", "warning")
         return redirect(url_for("index"))
 
-    conn = get_db_connection()
+    conn, is_pg = get_db_connection()
     cursor = conn.cursor()
     deleted_count = 0
 
     for lid in log_ids:
         try:
             lid_int = int(lid)
-            ph = "%s" if USE_POSTGRES else "?"
+            ph = "%s" if is_pg else "?"
             cursor.execute(f"SELECT time_out FROM attendance WHERE id = {ph}", (lid_int,))
             row = cursor.fetchone()
             if row and row[0] is not None:
