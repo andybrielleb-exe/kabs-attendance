@@ -29,9 +29,9 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v35")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v36")
 
-# Standard UTC+8 Philippine Time
+# Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
 
 app.config.update(
@@ -97,8 +97,8 @@ def parse_duration_to_minutes(dur_str):
     if not dur_str:
         return -1
     total = 0
-    h_match = re.search(r"(\d+)\s*h", dur_str)
-    m_match = re.search(r"(\d+)\s*m", dur_str)
+    h_match = re.search(r"(\d+)\s*h", str(dur_str))
+    m_match = re.search(r"(\d+)\s*m", str(dur_str))
     if h_match:
         total += int(h_match.group(1)) * 60
     if m_match:
@@ -333,97 +333,103 @@ def authenticate_user_by_qr(raw_qr_input):
 
 
 def get_fresh_user_profile(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-    cursor.execute(
-        f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed FROM volunteers WHERE id = {ph}",
-        (user_id,),
-    )
-    row = cursor.fetchone()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed FROM volunteers WHERE id = {ph}",
+            (user_id,),
+        )
+        row = cursor.fetchone()
 
-    if not row:
+        if not row:
+            cursor.close()
+            conn.close()
+            return None
+
+        status = row[7] if (len(row) > 7 and row[7]) else "Active"
+        v_type = row[8] if (len(row) > 8 and row[8]) else "Auxiliary"
+        last_accessed_str = row[9] if (len(row) > 9 and row[9]) else None
+        
+        now_dt = get_ph_now()
+        now_str = format_ph_time(now_dt)
+
+        is_over_six_months = False
+        if last_accessed_str:
+            try:
+                last_dt = datetime.strptime(last_accessed_str.strip(), "%Y-%m-%d %I:%M:%S %p")
+                last_dt = last_dt.replace(tzinfo=PH_TZ)
+                if (now_dt - last_dt).days >= 180:
+                    is_over_six_months = True
+            except Exception:
+                pass
+
+        if is_over_six_months and status != "Inactive":
+            status = "Inactive"
+            cursor.execute(
+                f"UPDATE volunteers SET volunteer_status = 'Inactive', last_accessed = {ph} WHERE id = {ph}",
+                (now_str, user_id),
+            )
+            conn.commit()
+        else:
+            cursor.execute(
+                f"UPDATE volunteers SET last_accessed = {ph} WHERE id = {ph}",
+                (now_str, user_id),
+            )
+            conn.commit()
+
         cursor.close()
         conn.close()
+
+        return {
+            "id": row[0],
+            "name": row[1],
+            "email": row[2],
+            "contact": row[3],
+            "qr_code": row[4],
+            "volunteer_code": row[5],
+            "profile_pic": row[6],
+            "volunteer_status": status,
+            "volunteer_type": v_type,
+            "last_accessed": row[9] if len(row) > 9 else None,
+        }
+    except Exception:
         return None
-
-    status = row[7] if (len(row) > 7 and row[7]) else "Active"
-    v_type = row[8] if (len(row) > 8 and row[8]) else "Auxiliary"
-    last_accessed_str = row[9] if (len(row) > 9 and row[9]) else None
-    
-    now_dt = get_ph_now()
-    now_str = format_ph_time(now_dt)
-
-    is_over_six_months = False
-    if last_accessed_str:
-        try:
-            last_dt = datetime.strptime(last_accessed_str.strip(), "%Y-%m-%d %I:%M:%S %p")
-            last_dt = last_dt.replace(tzinfo=PH_TZ)
-            if (now_dt - last_dt).days >= 180:
-                is_over_six_months = True
-        except Exception:
-            pass
-
-    if is_over_six_months and status != "Inactive":
-        status = "Inactive"
-        cursor.execute(
-            f"UPDATE volunteers SET volunteer_status = 'Inactive', last_accessed = {ph} WHERE id = {ph}",
-            (now_str, user_id),
-        )
-        conn.commit()
-    else:
-        cursor.execute(
-            f"UPDATE volunteers SET last_accessed = {ph} WHERE id = {ph}",
-            (now_str, user_id),
-        )
-        conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {
-        "id": row[0],
-        "name": row[1],
-        "email": row[2],
-        "contact": row[3],
-        "qr_code": row[4],
-        "volunteer_code": row[5],
-        "profile_pic": row[6],
-        "volunteer_status": status,
-        "volunteer_type": v_type,
-        "last_accessed": row[9] if len(row) > 9 else None,
-    }
 
 
 def get_current_system_state_hash(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
 
-    user_state = ("", "", "", "", "")
-    duty_state = ("", "", "", "")
+        user_state = ("", "", "", "", "")
+        duty_state = ("", "", "", "")
 
-    if user_id:
-        cursor.execute(
-            f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
-            (user_id,),
-        )
-        user_state = cursor.fetchone() or ("", "", "", "", "")
+        if user_id:
+            cursor.execute(
+                f"SELECT name, contact, profile_pic, volunteer_status, volunteer_type FROM volunteers WHERE id = {ph}",
+                (user_id,),
+            )
+            user_state = cursor.fetchone() or ("", "", "", "", "")
 
-        cursor.execute(
-            f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
-            (user_id,),
-        )
-        duty_state = cursor.fetchone() or ("", "", "", "")
+            cursor.execute(
+                f"SELECT id, time_in, time_out, total_hours FROM attendance WHERE volunteer_id = {ph} ORDER BY id DESC LIMIT 1",
+                (user_id,),
+            )
+            duty_state = cursor.fetchone() or ("", "", "", "")
 
-    cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
-    log_state = cursor.fetchone() or (0, 0, "")
+        cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(COALESCE(time_out, '')), '') FROM attendance")
+        log_state = cursor.fetchone() or (0, 0, "")
 
-    cursor.close()
-    conn.close()
+        cursor.close()
+        conn.close()
 
-    raw_signature = f"{user_state}_{duty_state}_{log_state}"
-    return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
+        raw_signature = f"{user_state}_{duty_state}_{log_state}"
+        return hashlib.md5(raw_signature.encode("utf-8")).hexdigest()
+    except Exception:
+        return "state_error_hash"
 
 
 MAIN_TEMPLATE = """
@@ -676,10 +682,10 @@ MAIN_TEMPLATE = """
                         <form method="GET" action="/" class="flex items-center gap-1.5 text-xs">
                             <label for="sort_by" class="font-semibold text-slate-600">Sort by:</label>
                             <select name="sort_by" id="sort_by" onchange="this.form.submit()" class="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 outline-none focus:ring-1 focus:ring-blue-600">
-                                <option value="latest" {% if current_sort == 'latest' %}selected{% endif %}>Latest Duty</option>
-                                <option value="name_asc" {% if current_sort == 'name_asc' %}selected{% endif %}>Name (A-Z)</option>
-                                <option value="name_desc" {% if current_sort == 'name_desc' %}selected{% endif %}>Name (Z-A)</option>
-                                <option value="hours_desc" {% if current_sort == 'hours_desc' %}selected{% endif %}>Highest Hours</option>
+                                <option value="latest" {% if current_sort|default('latest') == 'latest' %}selected{% endif %}>Latest Duty</option>
+                                <option value="name_asc" {% if current_sort|default('latest') == 'name_asc' %}selected{% endif %}>Name (A-Z)</option>
+                                <option value="name_desc" {% if current_sort|default('latest') == 'name_desc' %}selected{% endif %}>Name (Z-A)</option>
+                                <option value="hours_desc" {% if current_sort|default('latest') == 'hours_desc' %}selected{% endif %}>Highest Hours</option>
                             </select>
                         </form>
 
@@ -866,56 +872,25 @@ MAIN_TEMPLATE = """
             <div id="manual-modal-scroll" onscroll="checkManualModalScroll(this)" class="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm text-slate-700 leading-relaxed text-justify">
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Rationale</h4>
-                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities. According to a Gallup study reported by The Philippine Star, the Filipino youth are among the world's most dedicated volunteers despite a global decline in overall charitable behavior; 44% of Filipino adults reported volunteering in 2024, ranking the Philippines 4th highest globally in volunteerism rates. However, many young people lack structured opportunities to channel their talents and ideals into sustainable service initiatives.</p>
-                    <p>According to the study entitled <i>Evaluating the National Volunteering through the Bayanihang Bayan Program</i> by Ma. Ella Oplas, volunteer work—particularly informal activities—remains largely absent from national accounting systems, limiting the visibility of its true economic and social contributions.</p>
+                    <p>Young people are recognized as vital partners in nation-building. With their energy, creativity, and commitment to social good, youth have the capacity to become catalysts for meaningful change in their communities.</p>
                 </section>
-
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">Program Description & Objectives</h4>
-                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas. It was institutionalized under the Barangay Payatas Comprehensive Youth Code Ordinance and SK Payatas Resolution No. 012 S. 2024 and Resolution No. 42 S. 2025.</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li>Promote active youth participation in community development and local governance.</li>
-                        <li>Develop leadership, teamwork, and civic responsibility among young volunteers.</li>
-                        <li>Provide structured deployment, recognition, and skill-building opportunities.</li>
-                    </ul>
+                    <p>The KABS program is a youth volunteer program that seeks to strengthen the culture of volunteerism among youth in Payatas.</p>
                 </section>
-
                 <section class="space-y-2 border-b pb-4">
                     <h4 class="font-extrabold text-slate-900 text-base">KABS 3 Pillars</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div class="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                            <h5 class="font-bold text-blue-900 text-sm mb-1">⚡ Action</h5>
-                            <p class="text-xs">Represents the energy and initiative of the youth to step forward and create change.</p>
-                        </div>
-                        <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                            <h5 class="font-bold text-emerald-900 text-sm mb-1">🤝 Bayanihan</h5>
-                            <p class="text-xs">Embodies communal unity and shared responsibility.</p>
-                        </div>
-                        <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                            <h5 class="font-bold text-rose-900 text-sm mb-1">❤️ Service</h5>
-                            <p class="text-xs">Selflessness, dedication, and accountability to uplift lives.</p>
-                        </div>
-                    </div>
+                    <p>Action, Bayanihan, at Service.</p>
                 </section>
-
-                <section class="space-y-2 border-b pb-4">
-                    <h4 class="font-extrabold text-slate-900 text-base">Volunteer Committees & Deployment</h4>
-                    <p class="text-xs">Volunteers are deployed across 4 specialized committees: <b>Operations</b> (Logistics, Registration, Food), <b>Production</b> (Program flow, tabulators, emcee, technical), <b>Services</b> (Venue, Crowd control, First Aid), and <b>Engagement</b> (Media, Publicity, Graphics).</p>
-                </section>
-
                 <section class="space-y-2 pb-2">
-                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct & Rights of Volunteers</h4>
-                    <p class="text-xs">All volunteers are expected to maintain professional conduct, integrity, and mutual respect. Intoxicants, illegal drugs, and falsification of attendance records are strictly prohibited. Every volunteer is entitled to a safe deployment environment, fair treatment, and official recognition.</p>
-                    <div class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                        <p class="text-xs font-bold text-emerald-900">You have reached the end of the KABS Volunteer Manual.</p>
-                        <p class="text-[11px] text-emerald-700">You may now confirm your agreement below to unlock registration.</p>
-                    </div>
+                    <h4 class="font-extrabold text-slate-900 text-base">Code of Conduct</h4>
+                    <p class="text-xs">Uphold commitment to service, professionalism, and honesty.</p>
                 </section>
             </div>
 
             <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-2xl">
                 <span id="scroll-prompt-text" class="text-xs font-semibold text-amber-700 animate-pulse">
-                    ⬇️ Scroll down to the bottom to unlock...
+                    ⬇ I-scroll pababa hanggang dulo para ma-unlock...
                 </span>
                 <button type="button" id="agree-modal-btn" disabled onclick="acceptManualTerms()" class="py-2.5 px-6 bg-slate-400 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed transition-all">
                     I Agree (Unlock Registration)
@@ -1308,7 +1283,6 @@ PROFILE_TEMPLATE = """
                 </div>
                 
                 <div class="flex items-center gap-2">
-                    <!-- 1. CLASSIFICATION -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="type-btn-main" onclick="document.getElementById('type-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1350,7 +1324,6 @@ PROFILE_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- 2. STATUS -->
                     {% if is_admin %}
                     <div class="relative inline-block text-left">
                         <button type="button" id="status-btn-main" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all shadow-sm
@@ -1394,7 +1367,6 @@ PROFILE_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- PROFILE PHOTO SECTION -->
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 text-center space-y-3">
                 <div class="relative w-28 h-28 mx-auto">
                     {% if profile_user.get('profile_pic') %}
@@ -1422,7 +1394,6 @@ PROFILE_TEMPLATE = """
                 {% endif %}
             </div>
 
-            <!-- EDIT INFORMATION FORM -->
             <form action="/edit-profile/{{ profile_user.get('id') }}" method="POST" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Full Name</label>
@@ -1449,23 +1420,6 @@ PROFILE_TEMPLATE = """
                 </div>
                 {% endif %}
             </form>
-
-            <!-- DANGER ZONE -->
-            {% if is_admin %}
-            <div class="pt-6 border-t border-rose-200">
-                <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                        <h4 class="text-xs font-bold text-rose-900">Danger Zone: Admin Management</h4>
-                        <p class="text-[11px] text-rose-700">Permanently delete this volunteer account along with associated attendance records.</p>
-                    </div>
-                    <form action="/delete-volunteer-account/{{ profile_user.get('id') }}" method="POST" onsubmit="return confirm('ARE YOU SURE? This will permanently delete {{ profile_user.get('name') }} and cannot be undone.');">
-                        <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition-all whitespace-nowrap">
-                            🗑️ Delete Account
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </main>
 
@@ -1738,7 +1692,7 @@ def index():
     sort_by = request.args.get("sort_by", "latest")
 
     if session_user:
-        user = get_fresh_user_profile(session_user["id"])
+        user = get_fresh_user_profile(session_user.get("id"))
         if not user:
             session.clear()
 
@@ -1806,7 +1760,7 @@ def sync_state():
         state_hash = get_current_system_state_hash(None)
         return jsonify({"logged_in": False, "state_hash": state_hash})
 
-    state_hash = get_current_system_state_hash(session_user["id"])
+    state_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"logged_in": True, "state_hash": state_hash})
 
 
@@ -1835,7 +1789,7 @@ def profile_self():
         flash("Please log in first to view your profile.", "danger")
         return redirect(url_for("index"))
 
-    user = get_fresh_user_profile(session_user["id"])
+    user = get_fresh_user_profile(session_user.get("id"))
     if not user:
         session.clear()
         return redirect(url_for("index"))
@@ -1853,8 +1807,8 @@ def profile_by_id(user_id):
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
-    if not is_admin_user(current_user) and session_user["id"] != user_id:
+    current_user = get_fresh_user_profile(session_user.get("id"))
+    if not is_admin_user(current_user) and session_user.get("id") != user_id:
         flash("🔒 Unauthorized to view other volunteer profiles.", "warning")
         return redirect(url_for("index"))
 
@@ -1864,7 +1818,7 @@ def profile_by_id(user_id):
         return redirect(url_for("index"))
 
     is_admin = is_admin_user(current_user)
-    is_owner = (session_user["id"] == user_id)
+    is_owner = (session_user.get("id") == user_id)
 
     return render_template_string(
         PROFILE_TEMPLATE, profile_user=target_user, session_user=current_user, is_admin=is_admin, is_owner=is_owner
@@ -1877,7 +1831,7 @@ def update_volunteer_classification():
     if not session_user:
         return jsonify({"success": False, "message": "Authentication required."})
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         return jsonify({"success": False, "message": "Unauthorized action."})
 
@@ -1898,11 +1852,11 @@ def update_volunteer_classification():
     cursor.close()
     conn.close()
 
-    if session_user["id"] == target_user_id:
+    if session_user.get("id") == target_user_id:
         session["user"]["volunteer_type"] = new_type
         session.modified = True
 
-    new_hash = get_current_system_state_hash(session_user["id"])
+    new_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"success": True, "state_hash": new_hash})
 
 
@@ -1912,12 +1866,12 @@ def update_volunteer_status():
     if not session_user:
         return jsonify({"success": False, "message": "Authentication required."})
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         return jsonify({"success": False, "message": "Unauthorized action."})
 
     data = request.json or {}
-    target_user_id = data.get("user_id") or session_user["id"]
+    target_user_id = data.get("user_id") or session_user.get("id")
     new_status = data.get("status")
     if new_status not in ["Active", "Inactive"]:
         return jsonify({"success": False, "message": "Invalid status value."})
@@ -1933,50 +1887,12 @@ def update_volunteer_status():
     cursor.close()
     conn.close()
 
-    if session_user["id"] == target_user_id:
+    if session_user.get("id") == target_user_id:
         session["user"]["volunteer_status"] = new_status
         session.modified = True
 
-    new_hash = get_current_system_state_hash(session_user["id"])
+    new_hash = get_current_system_state_hash(session_user.get("id"))
     return jsonify({"success": True, "state_hash": new_hash})
-
-
-@app.route("/delete-volunteer-account/<int:user_id>", methods=["POST"])
-def delete_volunteer_account(user_id):
-    session_user = session.get("user")
-    if not session_user:
-        flash("Please log in first.", "danger")
-        return redirect(url_for("index"))
-
-    current_user = get_fresh_user_profile(session_user["id"])
-    if not is_admin_user(current_user):
-        flash("❌ Only SK Admins are authorized to delete volunteer accounts.", "danger")
-        return redirect(url_for("index"))
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if USE_POSTGRES else "?"
-
-    cursor.execute(f"SELECT name FROM volunteers WHERE id = {ph}", (user_id,))
-    target = cursor.fetchone()
-
-    if target:
-        v_name = target[0]
-        cursor.execute(f"DELETE FROM attendance WHERE volunteer_id = {ph}", (user_id,))
-        cursor.execute(f"DELETE FROM volunteers WHERE id = {ph}", (user_id,))
-        conn.commit()
-        flash(f"🗑️ Successfully deleted volunteer account for {v_name}.", "success")
-    else:
-        flash("Volunteer account not found.", "danger")
-
-    cursor.close()
-    conn.close()
-
-    if session_user["id"] == user_id:
-        session.clear()
-        return redirect(url_for("index"))
-
-    return redirect(url_for("index"))
 
 
 @app.route("/edit-profile/<int:user_id>", methods=["POST"])
@@ -1986,7 +1902,7 @@ def edit_profile(user_id):
         flash("Please log in to edit profile information.", "danger")
         return redirect(url_for("index"))
 
-    if session_user["id"] != user_id:
+    if session_user.get("id") != user_id:
         flash("❌ You are only permitted to edit your own account information.", "danger")
         return redirect(url_for("profile_by_id", user_id=user_id))
 
@@ -2026,9 +1942,9 @@ def save_cropped_profile():
         return jsonify({"success": False, "message": "Authentication required."})
 
     data = request.json or {}
-    target_user_id = data.get("user_id") or session_user["id"]
+    target_user_id = data.get("user_id") or session_user.get("id")
 
-    if session_user["id"] != target_user_id:
+    if session_user.get("id") != target_user_id:
         return jsonify({"success": False, "message": "❌ Only the account owner may change this profile picture."})
 
     image_data = data.get("image_data")
@@ -2060,7 +1976,7 @@ def export_attendance():
         flash("Please log in to export attendance logs.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to export the attendance records.", "danger")
         return redirect(url_for("index"))
@@ -2223,7 +2139,7 @@ def log_self_attendance():
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    profile = get_fresh_user_profile(session_user["id"])
+    profile = get_fresh_user_profile(session_user.get("id"))
     if not profile or profile.get("volunteer_status") != "Active":
         flash("❌ Your volunteer status is Inactive. Please contact SK Admins before recording attendance.", "warning")
         return redirect(url_for("index"))
@@ -2235,7 +2151,7 @@ def log_self_attendance():
 
     cursor.execute(
         f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (session_user["id"],),
+        (session_user.get("id"),),
     )
     active_record = cursor.fetchone()
 
@@ -2261,7 +2177,7 @@ def log_self_attendance():
 
         cursor.execute(
             f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
-            (session_user["id"], agenda_val, task_val, now_pst),
+            (session_user.get("id"), agenda_val, task_val, now_pst),
         )
         conn.commit()
         flash(
@@ -2378,6 +2294,12 @@ def page_not_found(e):
     return redirect(url_for("index"))
 
 
+@app.errorhandler(500)
+def server_error(e):
+    session.clear()
+    return redirect(url_for("index"))
+
+
 @app.route("/delete-log/<int:log_id>", methods=["POST"])
 def delete_log(log_id):
     session_user = session.get("user")
@@ -2385,7 +2307,7 @@ def delete_log(log_id):
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to delete attendance records.", "danger")
         return redirect(url_for("index"))
@@ -2427,7 +2349,7 @@ def delete_logs_batch():
         flash("Please log in first.", "danger")
         return redirect(url_for("index"))
 
-    current_user = get_fresh_user_profile(session_user["id"])
+    current_user = get_fresh_user_profile(session_user.get("id"))
     if not is_admin_user(current_user):
         flash("❌ Only SK Admins are authorized to delete attendance records.", "danger")
         return redirect(url_for("index"))
