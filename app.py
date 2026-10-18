@@ -29,9 +29,9 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_stable")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v44")
 
-# Standard Philippine Time Zone (UTC+8)
+# Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
 
 app.config.update(
@@ -503,7 +503,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
 
         {% if not user %}
-            <!-- LOGGED OUT VIEW -->
+            <!-- LOGGED OUT VIEW: TANGING LOGIN AT REGISTRATION LAMANG ANG MAKIKITA -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-1">
@@ -795,7 +795,7 @@ MAIN_TEMPLATE = """
                 </form>
             </div>
 
-            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION -->
+            <!-- KABS VOLUNTEER MANUAL: COLLAPSIBLE ACCORDION (NASA PINAKAIBABA) -->
             <div id="manual-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <button type="button" onclick="toggleManualAccordion()" class="w-full p-4 sm:p-5 bg-slate-900 hover:bg-slate-800 text-white flex justify-between items-center transition-colors text-left outline-none cursor-pointer">
                     <div>
@@ -1790,19 +1790,22 @@ def sync_state():
 
 @app.route("/qr-auth/<token>")
 def qr_direct_auth(token):
-    user = authenticate_user_by_qr(token)
-    if user:
-        session.permanent = True
-        session["user"] = {
-            "id": user[0],
-            "name": user[1],
-            "email": user[2],
-            "volunteer_code": user[5] if len(user) > 5 else "N/A",
-        }
-        session.modified = True
-        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
-    else:
-        flash("❌ Invalid or expired QR Pass.", "danger")
+    try:
+        user = authenticate_user_by_qr(token)
+        if user:
+            session.permanent = True
+            session["user"] = {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            }
+            session.modified = True
+            flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+        else:
+            flash("❌ Invalid or expired QR Pass.", "danger")
+    except Exception as e:
+        flash(f"⚠️ Auth error: {str(e)}", "danger")
     return redirect(url_for("index"))
 
 
@@ -2064,245 +2067,227 @@ def export_attendance():
 
 @app.route("/login-qr-api", methods=["POST"])
 def login_qr_api():
-    data = request.json or {}
-    payload = data.get("qr_payload", "")
-    user = authenticate_user_by_qr(payload)
+    try:
+        data = request.json or {}
+        payload = data.get("qr_payload", "")
+        user = authenticate_user_by_qr(payload)
 
-    if user:
-        session.permanent = True
-        session["user"] = {
-            "id": user[0],
-            "name": user[1],
-            "email": user[2],
-            "volunteer_code": user[5] if len(user) > 5 else "N/A",
-        }
-        session.modified = True
-        flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
-        return jsonify({"success": True, "volunteer_code": user[5]})
+        if user:
+            session.permanent = True
+            session["user"] = {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            }
+            session.modified = True
+            flash(f"✅ Welcome back, {user[1]}! (Logged in via QR Pass)", "success")
+            return jsonify({"success": True, "volunteer_code": user[5]})
 
-    return jsonify(
-        {"success": False, "message": "❌ Invalid or unrecognized QR code."}
-    )
+        return jsonify({"success": False, "message": "❌ Invalid or unrecognized QR code."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Login error: {str(e)}"})
 
 
 @app.route("/login-code", methods=["POST"])
 def login_code():
-    code = request.form.get("volunteer_code", "").strip()
-    user = authenticate_user_by_qr(code)
+    try:
+        code = request.form.get("volunteer_code", "").strip()
+        user = authenticate_user_by_qr(code)
 
-    if user:
-        session.permanent = True
-        session["user"] = {
-            "id": user[0],
-            "name": user[1],
-            "email": user[2],
-            "volunteer_code": user[5] if len(user) > 5 else "N/A",
-        }
-        session.modified = True
-        flash(f"✅ Welcome back, {user[1]}!", "success")
-    else:
-        flash("❌ Invalid volunteer code.", "danger")
+        if user:
+            session.permanent = True
+            session["user"] = {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            }
+            session.modified = True
+            flash(f"✅ Welcome back, {user[1]}!", "success")
+        else:
+            flash("❌ Invalid volunteer code.", "danger")
+    except Exception as e:
+        flash(f"⚠️ Error logging in: {str(e)}", "danger")
 
     return redirect(url_for("index"))
 
 
 @app.route("/login", methods=["POST"])
 def login():
-    email = request.form.get("email", "").strip().lower()
-    contact = request.form.get("contact", "").strip()
+    try:
+        email = request.form.get("email", "").strip().lower()
+        contact = request.form.get("contact", "").strip()
 
-    if not email.endswith("@gmail.com"):
-        flash("❌ Email must be a valid @gmail.com address.", "danger")
-        return redirect(url_for("index"))
+        if not email.endswith("@gmail.com"):
+            flash("❌ Email must be a valid @gmail.com address.", "danger")
+            return redirect(url_for("index"))
 
-    if (
-        not contact.isdigit()
-        or len(contact) != 11
-        or not contact.startswith("09")
-    ):
-        flash(
-            "❌ Contact number must be an 11-digit mobile number starting with '09'.",
-            "danger",
+        if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+            flash("❌ Contact number must be an 11-digit mobile number starting with '09'.", "danger")
+            return redirect(url_for("index"))
+
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
+        cursor.execute(
+            f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
+            (email, contact),
         )
-        return redirect(url_for("index"))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-    conn, is_pg = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if is_pg else "?"
-    cursor.execute(
-        f"SELECT id, name, email, contact, qr_code, volunteer_code FROM volunteers WHERE email = {ph} AND contact = {ph}",
-        (email, contact),
-    )
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if user:
-        session.permanent = True
-        session["user"] = {
-            "id": user[0],
-            "name": user[1],
-            "email": user[2],
-            "volunteer_code": user[5],
-        }
-        session.modified = True
-        flash(f"✅ Welcome back, {user[1]}!", "success")
-    else:
-        flash(
-            "❌ No volunteer account matches the provided email and contact number.",
-            "danger",
-        )
+        if user:
+            session.permanent = True
+            session["user"] = {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "volunteer_code": user[5] if len(user) > 5 else "N/A",
+            }
+            session.modified = True
+            flash(f"✅ Welcome back, {user[1]}!", "success")
+        else:
+            flash("❌ No volunteer account matches the provided email and contact number.", "danger")
+    except Exception as e:
+        flash(f"⚠️ Login error: {str(e)}", "danger")
 
     return redirect(url_for("index"))
 
 
 @app.route("/log-self-attendance", methods=["POST"])
 def log_self_attendance():
-    session_user = session.get("user")
-    if not session_user:
-        flash("Please log in first.", "danger")
-        return redirect(url_for("index"))
+    try:
+        session_user = session.get("user")
+        if not session_user:
+            flash("Please log in first.", "danger")
+            return redirect(url_for("index"))
 
-    profile = get_fresh_user_profile(session_user.get("id"))
-    if not profile or profile.get("volunteer_status") != "Active":
-        flash("❌ Your volunteer status is Inactive. Please contact SK Admins before recording attendance.", "warning")
-        return redirect(url_for("index"))
+        profile = get_fresh_user_profile(session_user.get("id"))
+        if not profile or profile.get("volunteer_status") != "Active":
+            flash("❌ Your volunteer status is Inactive. Please contact SK Admins before recording attendance.", "warning")
+            return redirect(url_for("index"))
 
-    conn, is_pg = get_db_connection()
-    cursor = conn.cursor()
-    now_pst = format_ph_time(get_ph_now())
-    ph = "%s" if is_pg else "?"
-
-    cursor.execute(
-        f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
-        (session_user.get("id"),),
-    )
-    active_record = cursor.fetchone()
-
-    if active_record:
-        rec_id = active_record[0]
-        time_in_val = active_record[1]
-        duration_str = calculate_duration(time_in_val, now_pst)
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        now_pst = format_ph_time(get_ph_now())
+        ph = "%s" if is_pg else "?"
 
         cursor.execute(
-            f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
-            (now_pst, duration_str, rec_id),
+            f"SELECT id, time_in FROM attendance WHERE volunteer_id = {ph} AND time_out IS NULL ORDER BY id DESC LIMIT 1",
+            (session_user.get("id"),),
         )
-        conn.commit()
-        flash(
-            f"🔴 TIME OUT recorded for {session_user.get('name')} ({now_pst}) | Total Hours: {duration_str}",
-            "success",
-        )
-    else:
-        agenda = request.form.get("agenda", "").strip()
-        task = request.form.get("task", "").strip()
-        agenda_val = agenda if agenda else "General Assembly"
-        task_val = task if task else "Volunteer Duty"
+        active_record = cursor.fetchone()
 
-        cursor.execute(
-            f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
-            (session_user.get("id"), agenda_val, task_val, now_pst),
-        )
-        conn.commit()
-        flash(
-            f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now_pst})",
-            "success",
-        )
+        if active_record:
+            rec_id = active_record[0]
+            time_in_val = active_record[1]
+            duration_str = calculate_duration(time_in_val, now_pst)
 
-    cursor.close()
-    conn.close()
+            cursor.execute(
+                f"UPDATE attendance SET time_out = {ph}, total_hours = {ph} WHERE id = {ph}",
+                (now_pst, duration_str, rec_id),
+            )
+            conn.commit()
+            flash(
+                f"🔴 TIME OUT recorded for {session_user.get('name')} ({now_pst}) | Total Hours: {duration_str}",
+                "success",
+            )
+        else:
+            agenda = request.form.get("agenda", "").strip()
+            task = request.form.get("task", "").strip()
+            agenda_val = agenda if agenda else "General Assembly"
+            task_val = task if task else "Volunteer Duty"
+
+            cursor.execute(
+                f"INSERT INTO attendance (volunteer_id, agenda, task, time_in, total_hours) VALUES ({ph}, {ph}, {ph}, {ph}, NULL)",
+                (session_user.get("id"), agenda_val, task_val, now_pst),
+            )
+            conn.commit()
+            flash(
+                f"🟢 TIME IN recorded for {session_user.get('name')} | Agenda: {agenda_val} ({now_pst})",
+                "success",
+            )
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        flash(f"⚠️ Attendance recording error: {str(e)}", "danger")
 
     return redirect(url_for("index"))
 
 
 @app.route("/register", methods=["POST"])
 def register():
-    name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip().lower()
-    contact = request.form.get("contact", "").strip()
-    agree_terms = request.form.get("agree_terms")
+    try:
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        contact = request.form.get("contact", "").strip()
+        agree_terms = request.form.get("agree_terms")
 
-    if not agree_terms:
-        flash(
-            "❌ You must scroll and read the KABS Volunteer Manual to the end before registering.",
-            "danger",
-        )
-        return redirect(url_for("index"))
+        if not agree_terms:
+            flash("❌ You must scroll and read the KABS Volunteer Manual to the end before registering.", "danger")
+            return redirect(url_for("index"))
 
-    if not email.endswith("@gmail.com") or len(email) <= 10:
-        flash("❌ Valid @gmail.com address required!", "danger")
-        return redirect(url_for("index"))
+        if not email.endswith("@gmail.com") or len(email) <= 10:
+            flash("❌ Valid @gmail.com address required!", "danger")
+            return redirect(url_for("index"))
 
-    if len(name) > 50 or len(name) < 2:
-        flash(
-            "❌ Full Name must be between 2 and 50 characters.",
-            "danger",
-        )
-        return redirect(url_for("index"))
+        if len(name) > 50 or len(name) < 2:
+            flash("❌ Full Name must be between 2 and 50 characters.", "danger")
+            return redirect(url_for("index"))
 
-    if (
-        not contact.isdigit()
-        or len(contact) != 11
-        or not contact.startswith("09")
-    ):
-        flash(
-            "❌ Contact number must be an 11-digit mobile number starting with '09'.",
-            "danger",
-        )
-        return redirect(url_for("index"))
+        if not contact.isdigit() or len(contact) != 11 or not contact.startswith("09"):
+            flash("❌ Contact number must be an 11-digit mobile number starting with '09'.", "danger")
+            return redirect(url_for("index"))
 
-    conn, is_pg = get_db_connection()
-    cursor = conn.cursor()
-    ph = "%s" if is_pg else "?"
+        conn, is_pg = get_db_connection()
+        cursor = conn.cursor()
+        ph = "%s" if is_pg else "?"
 
-    cursor.execute(
-        f"SELECT id, name FROM volunteers WHERE email = {ph}",
-        (email,),
-    )
-    existing_user = cursor.fetchone()
-    if existing_user:
+        cursor.execute(f"SELECT id, name FROM volunteers WHERE email = {ph}", (email,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            cursor.close()
+            conn.close()
+            flash(f"⚠️ You are already registered, {existing_user[1]}! Please log in with your QR pass or credentials.", "warning")
+            return redirect(url_for("index"))
+
+        auth_token = secrets.token_hex(16)
+        unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
+        now_pst = format_ph_time(get_ph_now())
+
+        if is_pg:
+            cursor.execute(
+                "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
+                (name, email, contact, auth_token, unique_volunteer_code, now_pst),
+            )
+            v_id = cursor.fetchone()[0]
+        else:
+            cursor.execute(
+                "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (?, ?, ?, ?, ?, NULL, 'Active', 'Auxiliary', ?)",
+                (name, email, contact, auth_token, unique_volunteer_code, now_pst),
+            )
+            v_id = cursor.lastrowid
+
+        cursor.execute(f"UPDATE volunteers SET qr_code = {ph} WHERE id = {ph}", (unique_volunteer_code, v_id))
+        conn.commit()
         cursor.close()
         conn.close()
-        flash(
-            f"⚠️ You are already registered, {existing_user[1]}! Please log in with your QR pass or credentials.",
-            "warning",
-        )
-        return redirect(url_for("index"))
 
-    auth_token = secrets.token_hex(16)
-    unique_volunteer_code = f"KABS-{secrets.token_hex(2).upper()}"
-    now_pst = format_ph_time(get_ph_now())
+        session.permanent = True
+        session["user"] = {
+            "id": v_id,
+            "name": name,
+            "email": email,
+            "volunteer_code": unique_volunteer_code,
+        }
+        session.modified = True
+        flash(f"✅ Registration complete! Welcome, {name}.", "success")
+    except Exception as e:
+        flash(f"⚠️ Registration error: {str(e)}", "danger")
 
-    if is_pg:
-        cursor.execute(
-            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (%s, %s, %s, %s, %s, NULL, 'Active', 'Auxiliary', %s) RETURNING id",
-            (name, email, contact, auth_token, unique_volunteer_code, now_pst),
-        )
-        v_id = cursor.fetchone()[0]
-    else:
-        cursor.execute(
-            "INSERT INTO volunteers (name, email, contact, auth_token, volunteer_code, profile_pic, volunteer_status, volunteer_type, last_accessed) VALUES (?, ?, ?, ?, ?, NULL, 'Active', 'Auxiliary', ?)",
-            (name, email, contact, auth_token, unique_volunteer_code, now_pst),
-        )
-        v_id = cursor.lastrowid
-
-    cursor.execute(
-        f"UPDATE volunteers SET qr_code = {ph} WHERE id = {ph}",
-        (unique_volunteer_code, v_id),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    session.permanent = True
-    session["user"] = {
-        "id": v_id,
-        "name": name,
-        "email": email,
-        "volunteer_code": unique_volunteer_code,
-    }
-    session.modified = True
-    flash(f"✅ Registration complete! Welcome, {name}.", "success")
     return redirect(url_for("index"))
 
 
@@ -2315,6 +2300,11 @@ def logout():
 
 @app.errorhandler(404)
 def page_not_found(e):
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def server_error(e):
     return redirect(url_for("index"))
 
 
@@ -2334,24 +2324,15 @@ def delete_log(log_id):
     cursor = conn.cursor()
     ph = "%s" if is_pg else "?"
 
-    cursor.execute(
-        f"SELECT time_out FROM attendance WHERE id = {ph}",
-        (log_id,),
-    )
+    cursor.execute(f"SELECT time_out FROM attendance WHERE id = {ph}", (log_id,))
     target = cursor.fetchone()
 
     if not target:
         flash("Attendance record not found.", "danger")
     elif target[0] is None:
-        flash(
-            "❌ Cannot delete an active duty session! Please punch Time Out first.",
-            "warning",
-        )
+        flash("❌ Cannot delete an active duty session! Please punch Time Out first.", "warning")
     else:
-        cursor.execute(
-            f"DELETE FROM attendance WHERE id = {ph}",
-            (log_id,),
-        )
+        cursor.execute(f"DELETE FROM attendance WHERE id = {ph}", (log_id,))
         conn.commit()
         flash("🗑️ Successfully deleted attendance record!", "success")
 
