@@ -29,7 +29,7 @@ except ImportError:
     psycopg2 = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v45")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "kabs_attendance_secret_key_2026_v46")
 
 # Standard Philippine Time Zone (UTC+8)
 PH_TZ = timezone(timedelta(hours=8))
@@ -675,7 +675,7 @@ MAIN_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- ATTENDANCE LOG TABLE (SA LOOB NG LOGIN) -->
+            <!-- ATTENDANCE LOG TABLE (SA LOOB LAMANG NG LOGIN) -->
             <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
                     <div>
@@ -1523,7 +1523,7 @@ PROFILE_TEMPLATE = """
         }
 
         function updateVolunteerStatusFast(targetUserId, newStatus) {
-            pauseSyncPaused();
+            pauseSyncTemporarily();
             document.getElementById('status-dropdown-menu').classList.add('hidden');
             const txt = document.getElementById('current-status-text');
             const btn = document.getElementById('status-btn-main');
@@ -2300,6 +2300,11 @@ def logout():
 
 @app.errorhandler(404)
 def page_not_found(e):
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def server_error(e):
     return redirect(url_for("index"))
 
 
